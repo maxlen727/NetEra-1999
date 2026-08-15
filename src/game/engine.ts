@@ -92,21 +92,22 @@ export function productShockMult(s: GameState, def: string): number {
 /** 产品上的竞争冲击标签（UI 展示用） */
 export const productShocks = (s: GameState, def: string) => s.shocks.filter((sh) => sh.product === def);
 /**
- * 产品老化（v4）：按「产品类型所属时代」对比当前时代（不是上线时间——晚上线的 BBS 照样是过时货）。
- * 落后 1 个时代满 3 个季度进入 rot：收入强制转负（亏损）、加速流失用户，倒逼停运或转型。
+ * 产品老化（v5 · 难度下调）：按「产品类型所属时代」对比当前时代。
+ * 落后 1 个时代只衰减不亏损（给转型缓冲期）；落后 2 个时代满 3 个季度才进入 rot：
+ * 收入强制转负、加速流失用户，倒逼停运或转型。
  */
 export function agingOf(p: ProductInst, turn: number): { eraDiff: number; income: number; arpu: number; pull: number; churn: number; rot: boolean; behindQuarters: number } {
   const prodEra = techDef(productDef(p.def).tech).era;
   const curEra = eraOf(turn).id;
   const eraDiff = Math.max(0, curEra - prodEra);
-  const behindQuarters = eraDiff >= 1 && p.behindSince != null ? Math.max(0, turn - p.behindSince) : 0;
-  const rot = eraDiff >= 1 && behindQuarters >= 3;
+  const behindQuarters = eraDiff >= 2 && p.behindSince != null ? Math.max(0, turn - p.behindSince) : 0;
+  const rot = eraDiff >= 2 && behindQuarters >= 3;
   return {
     eraDiff,
     income: Math.pow(0.45, eraDiff),          // 收入断崖式衰减
     arpu: Math.pow(0.45, eraDiff),            // 用户付费意愿同步下滑
     pull: Math.pow(0.7, eraDiff),             // 拉新能力衰减
-    churn: rot ? 1.5 + eraDiff : eraDiff * 0.3, // rot 后每季大幅流失用户（万）
+    churn: rot ? 1.5 + eraDiff : eraDiff >= 2 ? 0.4 * (eraDiff - 1) : 0, // 落后 2 时代起少量流失，rot 后大幅流失
     rot,
     behindQuarters,
   };
@@ -432,11 +433,11 @@ function endTurn(prev: GameState): GameState {
   const rep = quarterReport(s);
   s.funds = +(s.funds + rep.net).toFixed(1);
 
-  /* 3.5 记录产品首次落后时代的回合（按产品类型判定，用于 rot 强制亏损计时） */
+  /* 3.5 记录产品首次落后 2 个时代的回合（用于 rot 强制亏损的 3 季计时） */
   for (const p of s.products) {
     if (p.launched && !p.shut && p.behindSince == null) {
       const prodEra = techDef(productDef(p.def).tech).era;
-      if (eraOf(s.turn).id > prodEra) p.behindSince = s.turn;
+      if (eraOf(s.turn).id - prodEra >= 2) p.behindSince = s.turn;
     }
   }
   /* rot 预警：刚开始亏损的落后产品单独提示 */
@@ -603,10 +604,11 @@ function endTurn(prev: GameState): GameState {
     }
   }
 
-  /* 随机事件：后期（Web2.0 起）竞争加剧，触发概率上调，负面事件更多 */
+  /* 随机事件：后期（Web2.0 起）竞争加剧，触发概率上调；
+     门户时代（前 10 回合）新手保护：负面随机事件不触发 */
   const rndP = queue.length === payouts.length ? 0.42 : s.turn >= 22 ? 0.3 : 0.18;
   if (Math.random() < rndP) {
-    const pool = RANDOMS.filter((r) => r.kind !== 'special' && !s.flags[`used_${r.id}`] && (!r.cond || r.cond(s)));
+    const pool = RANDOMS.filter((r) => r.kind !== 'special' && !s.flags[`used_${r.id}`] && (!r.cond || r.cond(s)) && !(r.neg && s.turn < 10));
     if (pool.length) {
       const pick = pool[Math.floor(Math.random() * pool.length)];
       s.flags[`used_${pick.id}`] = true;
@@ -675,12 +677,17 @@ export function reducer(s: GameState, a: Action): GameState {
         ipo: st.ipo ?? null,
         techPts: st.techPts ?? 0,
         cur: st.cur ?? null,
-        products: (st.products ?? []).map((p) => ({
-          ...p,
-          level: (p as { level?: number }).level ?? 1,
-          price: (p as { price?: PriceMode }).price ?? 'std',
-          heat: (p as { heat?: number }).heat ?? 0,
-        })),
+        products: (st.products ?? []).map((p) => {
+          const prodEra = techDef(productDef(p.def).tech).era;
+          const behindOk = eraOf(st.turn).id - prodEra >= 2;
+          return {
+            ...p,
+            level: (p as { level?: number }).level ?? 1,
+            price: (p as { price?: PriceMode }).price ?? 'std',
+            heat: (p as { heat?: number }).heat ?? 0,
+            behindSince: behindOk ? (p as { behindSince?: number }).behindSince : undefined,
+          };
+        }),
         queue: (st.queue ?? []).filter((qid) => !!findEvent(qid)),
         toasts: [], eraBanner: null, shockBanner: null,
         shocks: (st.shocks ?? []).filter((sh) => sh.left > 0).map((sh) => ({ label: sh.label, mult: sh.mult, left: sh.left, product: (sh as { product?: string }).product })),
@@ -722,26 +729,32 @@ export function reducer(s: GameState, a: Action): GameState {
       n = applyFx(n, fx);
       if (gainF > 0) n = { ...n, funds: +(n.funds + gainF).toFixed(1) };
       if (ev.person) n = grantMet(n, ev.person);
-      /* 行业冲击波：重大事件对全行业的临时影响 */
+      /* 行业冲击波：重大事件对全行业的临时影响（门户时代负面冲击减半，新手保护） */
       if (ev.impact) {
         if (ev.impact.incomeMult && ev.impact.turns) {
-          n = { ...n, shocks: [...n.shocks.filter((sh) => sh.label !== ev.impact!.label), { label: ev.impact.label, mult: ev.impact.incomeMult, left: ev.impact.turns }] };
-          n = mkLog(n, 'history', `【行业冲击】${ev.title}引发「${ev.impact.label}」：全行业收入 ×${ev.impact.incomeMult}，持续 ${ev.impact.turns} 个季度。`);
-          n = { ...n, shockBanner: { label: ev.impact.label, detail: `全行业收入 ×${ev.impact.incomeMult} · 持续 ${ev.impact.turns} 季`, good: ev.impact.incomeMult >= 1 } };
+          const dampN = eraOf(n.turn).id === 0 && ev.impact.incomeMult < 1 ? 0.5 : 1;
+          const mult = +(1 - (1 - ev.impact.incomeMult) * dampN).toFixed(2);
+          n = { ...n, shocks: [...n.shocks.filter((sh) => sh.label !== ev.impact!.label), { label: ev.impact.label, mult, left: ev.impact.turns }] };
+          n = mkLog(n, 'history', `【行业冲击】${ev.title}引发「${ev.impact.label}」：全行业收入 ×${mult}，持续 ${ev.impact.turns} 个季度。`);
+          n = { ...n, shockBanner: { label: ev.impact.label, detail: `全行业收入 ×${mult} · 持续 ${ev.impact.turns} 季`, good: mult >= 1 } };
         }
         if (ev.impact.users) n.users = Math.max(0, +(n.users + ev.impact.users).toFixed(1));
         if (ev.impact.fame) n.fame = clamp(+(n.fame + ev.impact.fame).toFixed(1), 0, 100);
         if (ev.impact.tech && n.cur) n.prog = { ...n.prog, [n.cur]: (n.prog[n.cur] || 0) + (ev.impact.tech[1] ?? 0) };
       }
-      /* 产品级竞争冲击：事件主角直接挤压玩家的同类业务 */
+      /* 产品级竞争冲击：事件主角直接挤压玩家的同类业务（门户时代冲击减半，新手保护） */
       if (ev.competes && owns(n, ev.competes.product)) {
         const cp = ev.competes;
-        n = { ...n, shocks: [...n.shocks.filter((sh) => !(sh.product === cp.product && sh.label === cp.label)), { label: cp.label, mult: cp.mult, left: cp.turns, product: cp.product }] };
-        if (cp.heat) n = { ...n, products: n.products.map((p) => (p.def === cp.product ? { ...p, heat: Math.max(0, (p.heat || 0) - (cp.heat || 0)) } : p)) };
-        if (cp.users) n.users = Math.max(0, +(n.users - cp.users).toFixed(1));
+        const dampC = eraOf(n.turn).id === 0 ? 0.5 : 1;
+        const cmult = +(1 - (1 - cp.mult) * dampC).toFixed(2);
+        const cusers = (cp.users ?? 0) * dampC;
+        const cheat = Math.round((cp.heat ?? 0) * dampC);
+        n = { ...n, shocks: [...n.shocks.filter((sh) => !(sh.product === cp.product && sh.label === cp.label)), { label: cp.label, mult: cmult, left: cp.turns, product: cp.product }] };
+        if (cheat) n = { ...n, products: n.products.map((p) => (p.def === cp.product ? { ...p, heat: Math.max(0, (p.heat || 0) - cheat) } : p)) };
+        if (cusers) n.users = Math.max(0, +(n.users - cusers).toFixed(1));
         n = mkLog(n, 'warn', `【正面竞争】${cp.note}`);
         n = toast(n, `竞争冲击：你的${productDef(cp.product).name}被挤压`, 'bad');
-        n = { ...n, shockBanner: { label: cp.label, detail: `${productDef(cp.product).name}收入 ×${cp.mult} · ${cp.turns} 季${cp.users ? ` · 流失 ${cp.users} 万用户` : ''}`, good: false } };
+        n = { ...n, shockBanner: { label: cp.label, detail: `${productDef(cp.product).name}收入 ×${cmult} · ${cp.turns} 季${cusers ? ` · 流失 ${cusers} 万用户` : ''}`, good: false } };
       }
       /* 先驱变体：玩家抢先做出相关产品时的额外承认 */
       if (ev.variant && ev.variant.when(n)) {

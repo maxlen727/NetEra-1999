@@ -251,7 +251,9 @@ export function CompanyPanel({ s, d }: { s: GameState; d: DP }) {
                       <div className={`text-[10px] px-1.5 py-0.5 mt-1 leading-tight ${ag.rot ? 'text-[var(--alert)] bg-[#fdecea] font-bold' : 'text-[#b34a00] bg-[#fdf1e4]'}`}>
                         {ag.rot
                           ? `⚠ 强制亏损中（落后 ${ag.eraDiff} 个时代已 ${ag.behindQuarters} 季）：每季失血，用户加速流失——尽快停运或转型！`
-                          : `产品老化（落后 ${ag.eraDiff} 个时代${ag.behindQuarters > 0 ? `，已 ${ag.behindQuarters} 季` : ''}）：收入×${ag.income.toFixed(2)} 拉新×${ag.pull.toFixed(2)}——${3 - ag.behindQuarters} 季后将强制亏损`}
+                          : ag.eraDiff >= 2
+                            ? `产品老化（落后 ${ag.eraDiff} 个时代已 ${ag.behindQuarters} 季）：收入×${ag.income.toFixed(2)} 拉新×${ag.pull.toFixed(2)}——再过 ${3 - ag.behindQuarters} 季将强制亏损`
+                            : `产品老化（落后 ${ag.eraDiff} 个时代）：收入×${ag.income.toFixed(2)} 拉新×${ag.pull.toFixed(2)}——暂不亏损，抓紧迭代升级`}
                       </div>
                     );
                   })()}
@@ -820,7 +822,8 @@ export function HelpDialog({ onClose }: { onClose: () => void }) {
     ['融资', '行动点换钱：稀释股权拿 VC 的钱。创始人持股低于 34% 会被董事会否决。'],
     ['机房', '用户超过机房容量会「服务器过载」：收入 −25%、增长减半。在行动中心花 1 点 + 钱扩容。'],
     ['升级', '已上线产品可迭代到 Lv.3，每级收入 +30%。老产品别放着吃灰。'],
-    ['老化', '产品按「类型所属时代」判落后：收入/拉新随落后程度衰减；落后满 3 个季度强制亏损并加速流失用户，倒逼你停运或转型。'],
+    ['老化', '产品按「类型所属时代」判落后：落后 1 个时代只衰减不亏损；落后 2 个时代满 3 季才强制亏损并加速流失用户——给你留足了转型窗口。'],
+    ['新手保护', '门户时代（前 10 回合）：负面随机事件不触发，历史负面冲击与巨头竞争冲击一律减半。先站稳，再迎接泡沫。'],
     ['冲击', '重大历史事件会真实冲击你的财报（全屏红色横幅提醒）：如 OICQ 挤压你的 IM、支付宝冲击你的移动支付、3G 淘汰手机站。'],
     ['先驱', '抢在历史节点前做出同类产品（如 2005 前上线移动支付），会被记为「先驱者」，事件文案改写、声望大涨。'],
     ['股权', '上市是关键转折：募资 25% 流通，此后每季承担合规成本、股价随财报波动；创始人持股低于 34% 会被董事会持续施压。'],
