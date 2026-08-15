@@ -222,6 +222,15 @@ export const PERSONS: PersonDef[] = [
 
 /* ================= 事件（turn 对齐真实历史） ================= */
 
+/* 处境评估局部辅助（避免 engine↔data 循环依赖） */
+const ownsP = (s: GameState, def: string) => s.products.some((p) => p.def === def && p.launched && !p.shut);
+const beforeP = (s: GameState, def: string, turn: number) => s.products.some((p) => p.def === def && p.launched && (p.launchedTurn ?? 99) < turn);
+const fw = (v: number) => (Math.abs(v) >= 10000 ? `${(v / 10000).toFixed(1)}亿` : `${Math.round(v * 10) / 10}万`);
+const vsUsers = (s: GameState, theirs: number, label: string) =>
+  s.users >= theirs
+    ? `你的 ${fw(s.users)} 用户已压过${label}的 ${fw(theirs)}——这一局你领先。`
+    : `你的 ${fw(s.users)} 用户对比${label}的 ${fw(theirs)} 还有差距，但窗口期未关。`;
+
 export const EVENTS: GameEvent[] = [
   {
     id: 'ev_dialup', turn: 0, kind: 'history',
@@ -237,6 +246,12 @@ export const EVENTS: GameEvent[] = [
     id: 'ev_oicq', turn: 1, kind: 'person', person: 'pony',
     title: '一只胖企鹅诞生了',
     impact: { label: '即时通讯风潮', incomeMult: 1.12, turns: 3, users: 1 },
+    assess: (s) =>
+      beforeP(s, 'p_im', 1)
+        ? '【你的处境】你的 IM 比 OICQ 更早上线——你才是先行者，马化腾才是追赶者。'
+        : ownsP(s, 'p_im')
+          ? `【你的处境】你已有 IM 产品，OICQ 是直接对手。${vsUsers(s, 20, 'OICQ')}`
+          : '【你的处境】你还在 BBS/门户赛道。IM 的浪潮正在酝酿，现在入局还来得及。',
     variant: {
       when: (s) => s.products.some((p) => p.def === 'p_im' && p.launched && !p.shut),
       note: '业界注意到：你的 IM 产品与 OICQ 正面交锋，媒体开始讨论「谁才是中国 IM 之王」。',
@@ -344,6 +359,12 @@ export const EVENTS: GameEvent[] = [
     id: 'ev_cq', turn: 11, kind: 'person', person: 'chen',
     title: '《传奇》燎原',
     impact: { label: '网游市场爆发', incomeMult: 1.2, turns: 4 },
+    assess: (s) =>
+      beforeP(s, 'p_game', 11)
+        ? '【你的处境】你的网游比《传奇》更早上线——你比陈天桥更早嗅到了点卡的铜臭味。'
+        : ownsP(s, 'p_game')
+          ? '【你的处境】你有网游产品，《传奇》把整个市场做大了——水涨船高，你的点卡也会更好卖。'
+          : '【你的处境】网游是现金奶牛。陈天桥押上了全部身家，你敢不敢跟？',
     body: '2001 年 9 月，陈天桥押上全部身家——30 万美元代理费——签下韩国网游《传奇》。两个月后，全国网吧的屏幕一半都是沙巴克攻城战。点卡卖到断货，盛大的服务器每天进账以百万计。陈天桥请你在上海金茂喝咖啡：「跟着干，一起分蛋糕？」',
     footnote: '史实：2001 年 9 月盛大运营《传奇》，次年即占中国网游市场 60%；2004 年陈天桥以 88 亿身家成为最年轻首富。',
     choices: [
@@ -441,6 +462,14 @@ export const EVENTS: GameEvent[] = [
     id: 'ev_alipay', turn: 23, kind: 'person', person: 'mayun',
     title: '支付宝：担保交易破局',
     impact: { label: '电商基建爆发', incomeMult: 1.15, turns: 4 },
+    assess: (s) =>
+      beforeP(s, 'p_mpay', 23)
+        ? '【你的处境】你的移动支付比支付宝更早上线——你抢先定义了在线支付的玩法，马云在追赶你。'
+        : ownsP(s, 'p_mpay')
+          ? '【你的处境】你已有移动支付产品，与支付宝同场竞争。支付入口之争刚刚开始。'
+          : ownsP(s, 'p_ec')
+            ? '【你的处境】你有电商但缺支付——支付宝补上的正是你最薄弱的一环，要么合作，要么自建。'
+            : '【你的处境】支付是电商的命门。谁掌握支付，谁就掌握下一个十年。',
     variant: {
       when: (s) =>
         s.products.some((p) => (p.def === 'p_mpay') && p.launched && !p.shut) || s.researched.includes('t_pay'),
@@ -468,6 +497,12 @@ export const EVENTS: GameEvent[] = [
   {
     id: 'ev_aug2005', turn: 26, kind: 'history',
     title: '2005 年 8 月 · 百度的疯狂',
+    assess: (s) =>
+      beforeP(s, 'p_search', 26)
+        ? '【你的处境】你的搜索引擎比百度更早上线——百度的暴涨证明了你押注的赛道，资本开始找你。'
+        : ownsP(s, 'p_search')
+          ? '【你的处境】你与百度同场竞技。百度首日 +354%，整个搜索赛道估值水涨船高。'
+          : '【你的处境】你还在门户时代打法。搜索是下一个入口，百度已经抢先卡位。',
     variant: {
       when: (s) => s.products.some((p) => p.def === 'p_search' && p.launched && !p.shut),
       note: '你的搜索引擎与百度同场竞技，百度的暴涨让整个搜索赛道被资本重新定价——你的产品也跟着水涨船高。',
@@ -502,6 +537,12 @@ export const EVENTS: GameEvent[] = [
     id: 'ev_iphone', turn: 32, kind: 'history',
     title: 'iPhone 时刻',
     impact: { label: '移动互联网前夜', incomeMult: 1.15, turns: 4 },
+    assess: (s) =>
+      beforeP(s, 'p_client', 32)
+        ? '【你的处境】你的手机客户端比 iPhone 更早布局——当所有人还在观望时，你已经站在掌心入口上。'
+        : ownsP(s, 'p_client')
+          ? '【你的处境】你已有手机客户端。iPhone 会引爆整个移动端，你的布局即将兑现。'
+          : '【你的处境】你还在 PC 端。入口正在从书桌移向掌心——留给桌面端的时间不多了。',
     body: '2007 年 1 月 9 日，乔布斯穿着黑色高领衫走上旧金山的台：「今天，苹果重新发明了手机。」没有键盘，一块玻璃，手指划过之处，世界变了。中关村的水货柜台前排起长队，嗅觉灵敏的人已经意识到：互联网的入口，正在从书桌移到掌心。',
     footnote: '史实：2007 年 1 月 9 日初代 iPhone 发布；2008 年 App Store 上线，开启移动应用大爆炸。',
     choices: [
@@ -555,6 +596,12 @@ export const EVENTS: GameEvent[] = [
     id: 'ev_weibo', turn: 42, kind: 'history',
     title: '微博元年',
     impact: { label: '微博风潮', incomeMult: 1.15, turns: 4, users: 3 },
+    assess: (s) =>
+      beforeP(s, 'p_sns', 42)
+        ? '【你的处境】你的 SNS 社区比微博更早布局——微博的爆发验证了社交赛道，你的先发用户是护城河。'
+        : ownsP(s, 'p_sns')
+          ? `【你的处境】你有 SNS 社区，微博是直接竞争者。${vsUsers(s, 500, '微博')}`
+          : '【你的处境】140 字的内容黑洞正在吸走流量。没有社交产品的你，正被边缘化。',
     body: '2009 年 8 月，新浪微博内测上线，140 个字改变了中文互联网的表达方式。明星入驻、全民围观、热搜诞生——「今天你织围脖了吗」成了见面问候语。又一次，一个新的流量黑洞正在形成。',
     footnote: '史实：2009 年 8 月 14 日新浪微博上线，一年内用户突破 5000 万。',
     choices: [
@@ -602,6 +649,10 @@ export const EVENTS: GameEvent[] = [
     id: 'ev_3q', turn: 47, kind: 'history',
     title: '3Q 大战 · 你的站队',
     impact: { label: '行业大洗牌', incomeMult: 1.1, turns: 2, users: 4, fame: 2 },
+    assess: (s) =>
+      ownsP(s, 'p_im')
+        ? `【你的处境】你是 IM 玩家，两强相争让你的产品成为「第三选择」。${vsUsers(s, 3000, 'QQ')}`
+        : '【你的处境】你没有 IM，这场大战与你无关——但战后「开放平台」的新规则会重塑所有人。',
     variant: {
       when: (s) => s.products.some((p) => p.def === 'p_im' && p.launched && !p.shut),
       note: '作为 IM 厂商，你被卷入这场大战的舆论漩涡——大量不满 3Q 二选一的用户涌向你的产品。',

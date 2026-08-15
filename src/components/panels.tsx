@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
-import { DIFFICULTIES, OPS_ACTIONS, PRICE_MODES, RIVAL_CURVES, SERVER_TIERS } from '../game/data';
+import { ACHIEVEMENTS, DIFFICULTIES, OPS_ACTIONS, PRICE_MODES, RIVAL_CURVES, SERVER_TIERS } from '../game/data';
 import { isMuted, setMuted, sfx } from '../game/sfx';
 import {
   ERAS, PERSONS, POLICIES, PRODUCTS, TECHS, TOTAL_TURNS, eraOf, findEvent, fmtVal, fmtW,
   organicGrowth, personDef, productDef, quarterReport, raiseOffer, acceptRaise, researchSpeed, techDef, turnLabel, valuation,
-  choiceCost, productUpgradeCost, serverUpgradeCost, rivalVal, nextResearchable, productIncome, priceMode, opsDef,
+  choiceCost, productUpgradeCost, serverUpgradeCost, rivalVal, nextResearchable, productIncome, priceMode, opsDef, agingOf,
 } from '../game/engine';
 import type { Action, GameState } from '../game/types';
 import { Btn, Icons, Spark, Win } from './ui';
@@ -165,9 +165,54 @@ export function CompanyPanel({ s, d }: { s: GameState; d: DP }) {
             <div className="flex justify-between border-t border-[#d8d4c6] pt-0.5 mt-0.5"><span>人力成本（{s.team} 人）</span><b className="text-[var(--alert)]">−{rep.salary.toFixed(1)}</b></div>
             <div className="flex justify-between"><span>服务器 / 带宽运维</span><b className="text-[var(--alert)]">−{rep.upkeep.toFixed(1)}</b></div>
             <div className="flex justify-between border-t border-[#d8d4c6] pt-0.5 mt-0.5 font-bold"><span>净现金流</span><b style={{ color: rep.net >= 0 ? 'var(--money)' : 'var(--alert)' }}>{rep.net >= 0 ? '+' : ''}{rep.net.toFixed(1)} 万</b></div>
-            <div className="flex justify-between"><span>创始人持股</span><b>{s.equity}%</b></div>
+            <div className="flex justify-between"><span>创始人持股</span><b className={s.equity <= 34 ? 'text-[var(--alert)]' : ''}>{s.equity}%{s.equity <= 34 && ' ⚠'}</b></div>
           </div>
         </div>
+
+        {/* 上市（IPO） */}
+        {s.ipo ? (
+          <div className="bevel-in bg-[#fff8e6] border-[#e8a400] p-2">
+            <div className="flex items-center justify-between mb-1">
+              <span className="font-disp text-sm text-[#b34a00]">已上市 · {turnLabel(s.ipo.turn)} 挂牌</span>
+              <span className="font-term text-base text-[var(--portal)]">市值 {fmtVal(s.ipo.cap)}</span>
+            </div>
+            <div className="text-[11px] space-y-0.5 text-[#5a5750]">
+              <div className="flex justify-between"><span>发行价</span><b className="text-[var(--ink)]">{s.ipo.price} 元/股</b></div>
+              <div className="flex justify-between"><span>公众持股（流通）</span><b className="text-[var(--ink)]">{s.ipo.float}%</b></div>
+              <div className="flex justify-between"><span>每季合规成本</span><b className="text-[var(--alert)]">−2.5 万</b></div>
+            </div>
+            <div className="text-[10px] text-[#b34a00] mt-1 leading-tight">上市后市值随财报波动：盈利推高市值，亏损会被资本市场用脚投票。</div>
+          </div>
+        ) : (
+          <div className="bevel-in bg-white p-2">
+            <div className="flex items-center justify-between mb-1">
+              <span className="font-bold text-[var(--navy-1)]">IPO 上市之路</span>
+              <span className="text-[10px] text-[#8a867a]">耗 2 行动点 + 15 万承销费</span>
+            </div>
+            <div className="text-[11px] space-y-0.5">
+              {[
+                { ok: eraOf(s.turn).id >= 2, txt: '进入 Web 2.0 时代（2004 年后）' },
+                { ok: valuation(s) >= 300, txt: `估值 ≥ 300（当前 ${Math.round(valuation(s))}）` },
+                { ok: s.products.filter((p) => p.launched && !p.shut).length >= 3, txt: `在运营产品 ≥ 3（当前 ${s.products.filter((p) => p.launched && !p.shut).length}）` },
+                { ok: s.fame >= 25, txt: `声望 ≥ 25（当前 ${Math.round(s.fame)}）` },
+                { ok: s.funds >= 15, txt: `现金 ≥ 15 万（当前 ${Math.round(s.funds)}）` },
+              ].map((r, i) => (
+                <div key={i} className="flex items-center gap-1.5">
+                  <span className={`w-3 h-3 grid place-items-center text-[9px] font-bold ${r.ok ? 'bg-[var(--money)] text-white' : 'bg-[#d8d4c6] text-[#8a867a]'}`}>{r.ok ? '✓' : '·'}</span>
+                  <span className={r.ok ? 'text-[#1f5a38]' : 'text-[#8a867a]'}>{r.txt}</span>
+                </div>
+              ))}
+            </div>
+            <button
+              onClick={() => d({ type: 'IPO' })}
+              disabled={s.queue.length > 0 || s.ap < 2 || eraOf(s.turn).id < 2 || valuation(s) < 300 || s.products.filter((p) => p.launched && !p.shut).length < 3 || s.fame < 25 || s.funds < 15}
+              className="btn98 btn-primary w-full mt-1.5 font-disp text-sm py-1 disabled:opacity-40"
+            >
+              敲钟上市（稀释 25% 股权）
+            </button>
+            <div className="text-[10px] text-[#8a867a] mt-1 leading-tight">上市阵痛：募资到账但每季固定合规成本，市值随财报波动。</div>
+          </div>
+        )}
 
         <div className="bevel-in bg-white p-2">
           <div className="flex justify-between items-baseline mb-1">
@@ -189,15 +234,23 @@ export function CompanyPanel({ s, d }: { s: GameState; d: DP }) {
               const def = productDef(p.def);
               const effW = s.policies.includes('p_fast') ? def.work * 0.7 : def.work;
               return (
-                <div key={p.uid} className="bevel-in bg-white p-1.5">
+                <div key={p.uid} className={`bevel-in p-1.5 ${p.shut ? 'bg-[#e5e2d6] opacity-70' : 'bg-white'}`}>
                   <div className="flex justify-between items-baseline">
-                    <b>{def.name}</b>
-                    {p.launched
-                      ? <span className="font-term text-[var(--money)]">+{(rep.rows.find((r) => r.name === def.name)?.val ?? 0).toFixed(1)}/季{p.level > 1 && <b className="text-[#b34a00] text-[10px]"> Lv.{p.level}</b>}</span>
-                      : <span className="text-[10px] text-[#8a5a20]">开发中 {Math.floor(p.progress * 10) / 10}/{Math.round(effW * 10) / 10}</span>}
+                    <b className={p.shut ? 'text-[#8a867a] line-through' : ''}>{def.name}</b>
+                    {p.shut
+                      ? <span className="text-[10px] font-bold text-[#8a867a]">已停运</span>
+                      : p.launched
+                        ? <span className="font-term text-[var(--money)]">+{(rep.rows.find((r) => r.name === def.name)?.val ?? 0).toFixed(1)}/季{p.level > 1 && <b className="text-[#b34a00] text-[10px]"> Lv.{p.level}</b>}</span>
+                        : <span className="text-[10px] text-[#8a5a20]">开发中 {Math.floor(p.progress * 10) / 10}/{Math.round(effW * 10) / 10}</span>}
                   </div>
-                  {!p.launched && <div className="progress98 mt-1"><i style={{ width: `${Math.min(100, (p.progress / effW) * 100)}%` }} /></div>}
-                  {p.launched && (() => {
+                  {/* 产品老化标记 */}
+                  {p.launched && !p.shut && agingOf(p, s.turn).eraDiff > 0 && (
+                    <div className="text-[10px] text-[#b34a00] bg-[#fdf1e4] px-1.5 py-0.5 mt-1 leading-tight">
+                      产品老化（落后 {agingOf(p, s.turn).eraDiff} 个时代）：收入×{agingOf(p, s.turn).income.toFixed(2)} 拉新×{agingOf(p, s.turn).pull.toFixed(2)}——考虑迭代升级或停运
+                    </div>
+                  )}
+                  {!p.launched && !p.shut && <div className="progress98 mt-1"><i style={{ width: `${Math.min(100, (p.progress / effW) * 100)}%` }} /></div>}
+                  {p.launched && !p.shut && (() => {
                     const heat = p.heat || 0;
                     const isHit = heat >= 80;
                     const busy = s.ap <= 0 || s.queue.length > 0;
@@ -246,6 +299,12 @@ export function CompanyPanel({ s, d }: { s: GameState; d: DP }) {
                           ) : (
                             <span className="flex-1 text-center text-[10px] font-bold text-[#b34a00] py-0.5">满级</span>
                           )}
+                          <button title="停止运营：不再产生收入与运维成本，但流失部分用户与声望。止损或腾出资源时用"
+                            disabled={busy}
+                            onClick={() => d({ type: 'SHUT_PRODUCT', uid: p.uid })}
+                            className="text-[10px] font-bold px-1.5 py-0.5 text-[var(--alert)] hover:bg-[#fdecea] disabled:opacity-40">
+                            停运
+                          </button>
                         </div>
                       </div>
                     );
@@ -354,18 +413,35 @@ export function PersonsPanel({ s, d }: { s: GameState; d: DP }) {
                   {isAdv && <span className="text-[9px] bg-[var(--navy-1)] text-white px-1">顾问</span>}
                 </div>
                 <div className="text-[10px] text-[#5a5750] truncate">{met ? `${p.title} · ${p.co}` : '尚未结识'}</div>
+                {/* 增益透明化：结识后即可看到 TA 能带来什么 */}
                 {met && (
-                  <div className="flex items-center gap-1 mt-0.5">
+                  <div className="text-[10px] leading-tight mt-0.5 px-1.5 py-1 bevel-in bg-[#f6f4ec]">
+                    <b className="text-[var(--navy-1)]">{p.buffName}</b>
+                    <span className="text-[#5a5750]"> · {p.buffDesc}</span>
+                  </div>
+                )}
+                {met && (
+                  <div className="flex items-center gap-1 mt-1">
                     <span className="text-[var(--alert)]">{Icons.heart(11)}</span>
                     {[1, 2, 3, 4, 5].map((i) => <i key={i} className={`w-2 h-2 ${i <= Math.min(rel, 5) ? 'bg-[var(--portal)]' : 'bg-[#d8d4c6] border border-[#b8b4a6]'}`} />)}
-                    <button
-                      disabled={!canHire}
-                      onClick={() => d({ type: 'HIRE_ADVISOR', person: p.id })}
-                      title={met ? (rel >= 3 ? `聘请为战略顾问（${p.hireCost} 万/年）：${p.buffDesc}` : '好感达到 3 点后可聘请') : ''}
-                      className="ml-auto text-[10px] font-bold px-1.5 py-0.5 btn98 disabled:opacity-40"
-                    >
-                      聘为顾问 ¥{p.hireCost}万
-                    </button>
+                    {isAdv ? (
+                      <button
+                        onClick={() => d({ type: 'DISMISS_ADVISOR', person: p.id })}
+                        title="解除顾问关系，让出顾问席位"
+                        className="ml-auto text-[10px] font-bold px-1.5 py-0.5 btn98 text-[var(--alert)]"
+                      >
+                        解聘
+                      </button>
+                    ) : (
+                      <button
+                        disabled={!canHire}
+                        onClick={() => d({ type: 'HIRE_ADVISOR', person: p.id })}
+                        title={met ? (rel >= 3 ? `聘请为战略顾问（${p.hireCost} 万）：${p.buffDesc}` : '好感达到 3 点后可聘请') : ''}
+                        className="ml-auto text-[10px] font-bold px-1.5 py-0.5 btn98 disabled:opacity-40"
+                      >
+                        聘为顾问 ¥{p.hireCost}万
+                      </button>
+                    )}
                   </div>
                 )}
               </div>
@@ -536,6 +612,41 @@ export function EventDialog({ s, d }: { s: GameState; d: DP }) {
               </div>
             )}
             <p className="leading-relaxed">{ev.body}</p>
+
+            {/* 先驱者判定：你抢在历史之前 */}
+            {ev.variant && ev.variant.when(s) && ev.variant.note && (
+              <div className="bevel-in bg-[#fff8e6] border-l-4 border-[#e8a400] px-2.5 py-2 text-[12px] leading-snug">
+                <div className="font-disp text-[var(--portal)] text-sm tracking-wide mb-0.5">先驱者 · 你改写了这一页</div>
+                {ev.variant.note}
+              </div>
+            )}
+
+            {/* 处境评估：这件事和你有什么关系 */}
+            {(() => {
+              const line = ev.assess ? ev.assess(s) : null;
+              if (!line) return null;
+              const ahead = line.includes('你领先') || line.includes('先行者') || line.includes('更早');
+              return (
+                <div className={`bevel-in px-2.5 py-2 text-[12px] leading-snug border-l-4 ${ahead ? 'bg-[#eef6ee] border-[var(--money)] text-[#1f5a38]' : 'bg-[#eef2f8] border-[var(--navy-2)] text-[var(--navy-1)]'}`}>
+                  {line}
+                </div>
+              );
+            })()}
+
+            {/* 行业冲击波 */}
+            {ev.impact && (
+              <div className="flex items-center gap-2 text-[11px] bg-[#101418] text-[#e8c15a] px-2.5 py-1.5 bevel-in">
+                {Icons.bolt(13)}
+                <span className="font-disp tracking-wide">行业冲击</span>
+                <span className="text-[#9fb4a8]">
+                  {ev.impact.label}
+                  {ev.impact.incomeMult && (ev.impact.incomeMult >= 1 ? ` · 全行业收入 ×${ev.impact.incomeMult}` : ` · 全行业收入 ×${ev.impact.incomeMult}`)}
+                  {ev.impact.turns ? `（持续 ${ev.impact.turns} 季）` : ''}
+                  {ev.impact.users ? ` · 用户 +${ev.impact.users}万` : ''}
+                </span>
+              </div>
+            )}
+
             {ev.footnote && (
               <div className="text-[11px] text-[#8a5a20] bg-[#fdf1e4] border-l-4 border-[var(--portal)] px-2 py-1.5 leading-snug">
                 <b>史料</b> · {ev.footnote}
@@ -564,13 +675,18 @@ export function EventDialog({ s, d }: { s: GameState; d: DP }) {
 }
 
 /* ============ 底部任务栏 ============ */
-export function Taskbar({ s, d, onHelp }: { s: GameState; d: DP; onHelp: () => void }) {
+export function Taskbar({ s, d, onHelp, onAch }: { s: GameState; d: DP; onHelp: () => void; onAch: () => void }) {
   const waiting = s.queue.length > 0;
   const stuck = waiting && !findEvent(s.queue[0]);
+  const achCount = ACHIEVEMENTS.filter((a) => s.flags[`done_${a.id}`]).length;
   return (
     <div className="bevel-out px-2 py-1.5 flex items-center gap-2">
       <Btn onClick={onHelp} className="font-disp text-sm flex items-center gap-1.5">
         <span className="text-[var(--portal)]">{Icons.globe(16)}</span> 开始
+      </Btn>
+      <Btn onClick={onAch} className="font-disp text-sm flex items-center gap-1.5" title="查看成就墙">
+        <span className="text-[#e8a400]">{Icons.star(16)}</span> 史册
+        <span className="font-term text-xs bg-[#101418] text-[#e8c15a] px-1.5 py-0.5 rounded-sm">{achCount}/{ACHIEVEMENTS.length}</span>
       </Btn>
       {stuck && (
         <Btn onClick={() => d({ type: 'SKIP_EVENT' })} className="font-bold text-[var(--alert)] flex items-center gap-1" title="队列里有无法读取的事件，点击手动跳过">
@@ -677,6 +793,47 @@ export function HelpDialog({ onClose }: { onClose: () => void }) {
               <div key={k} className="bevel-in bg-white p-2"><b className="text-[var(--navy-1)] mr-1.5">▸ {k}</b>{v}</div>
             ))}
             <Btn primary onClick={onClose} className="w-full mt-1">明白了，开干</Btn>
+          </div>
+        </Win>
+      </div>
+    </div>
+  );
+}
+
+/* ============ 成就墙 ============ */
+export function AchievementWall({ s, onClose }: { s: GameState; onClose: () => void }) {
+  const done = ACHIEVEMENTS.filter((a) => s.flags[`done_${a.id}`]);
+  const pct = Math.round((done.length / ACHIEVEMENTS.length) * 100);
+  return (
+    <div className="fixed inset-0 z-50 grid place-items-center p-4" style={{ background: 'rgba(6,30,32,0.6)' }} onClick={onClose}>
+      <div className="dialog-pop bevel-out w-full max-w-2xl" onClick={(e) => e.stopPropagation()}>
+        <Win title="成就墙 · 你的互联网史册" icon={Icons.star()} tone="orange">
+          <div className="p-3.5 max-h-[68vh] overflow-y-auto scroll-98">
+            <div className="flex items-center gap-3 mb-3">
+              <div className="font-disp text-3xl text-[var(--portal)] leading-none">{done.length}<span className="text-base text-[#8a867a]">/{ACHIEVEMENTS.length}</span></div>
+              <div className="flex-1">
+                <div className="progress98"><i style={{ width: `${pct}%`, background: 'repeating-linear-gradient(90deg,#ff6a00 0 8px,#ffb347 8px 16px)' }} /></div>
+                <div className="text-[10px] text-[#5a5750] mt-0.5">史册完成度 {pct}%</div>
+              </div>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              {ACHIEVEMENTS.map((a) => {
+                const got = !!s.flags[`done_${a.id}`];
+                return (
+                  <div key={a.id} className={`bevel-in p-2.5 flex items-start gap-2.5 transition-all ${got ? 'bg-[#fff8e6] border-[#e8a400] hover:-translate-y-0.5' : 'bg-[#e5e2d6] opacity-60'}`}>
+                    <span className={`grid place-items-center w-9 h-9 shrink-0 ${got ? 'text-[#e8a400]' : 'text-[#a8a496]'}`}>
+                      {Icons.star(got ? 30 : 26)}
+                    </span>
+                    <div className="min-w-0">
+                      <div className={`font-disp text-base leading-tight ${got ? 'text-[#b34a00]' : 'text-[#8a867a]'}`}>{got ? a.name : '？？？'}</div>
+                      <div className="text-[11px] text-[#5a5750] leading-snug">{a.desc}</div>
+                      <div className={`text-[10px] font-bold mt-0.5 ${got ? 'text-[var(--money)]' : 'text-[#a8a496]'}`}>{got ? '已载入史册' : '未解锁'}</div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            <Btn primary onClick={onClose} className="w-full mt-3">合上史册</Btn>
           </div>
         </Win>
       </div>

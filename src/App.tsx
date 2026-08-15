@@ -1,7 +1,7 @@
 import { Component, useEffect, useReducer, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import {
-  ActionsPanel, Chronicle, CompanyPanel, EraBanner, EventDialog, HelpDialog,
+  AchievementWall, ActionsPanel, Chronicle, CompanyPanel, EraBanner, EventDialog, HelpDialog,
   PersonsPanel, PolicyPanel, ResourceBar, Taskbar, TechPanel, Toasts,
 } from './components/panels';
 import { BootScreen, OverScreen, SetupScreen } from './components/screens';
@@ -47,6 +47,7 @@ class BSOD extends Component<{ children: ReactNode; onReset: () => void }, { err
 export default function App() {
   const [s, d] = useReducer(reducer, bootState);
   const [help, setHelp] = useState(false);
+  const [ach, setAch] = useState(false);
   const [hasSave, setHasSave] = useState(false);
   const loadRef = useRef<GameState | null>(null);
 
@@ -136,11 +137,11 @@ export default function App() {
       if (e.key !== 'Enter') return;
       const tag = (e.target as HTMLElement)?.tagName;
       if (tag === 'INPUT' || tag === 'TEXTAREA') return;
-      if (s.phase === 'play' && s.queue.length === 0 && !help) d({ type: 'END_TURN' });
+      if (s.phase === 'play' && s.queue.length === 0 && !help && !ach) d({ type: 'END_TURN' });
     };
     window.addEventListener('keydown', h);
     return () => window.removeEventListener('keydown', h);
-  }, [s.phase, s.queue.length, help]);
+  }, [s.phase, s.queue.length, help, ach]);
 
   if (s.phase === 'boot') {
     return (
@@ -198,10 +199,11 @@ export default function App() {
               <div className="lg:h-72 min-h-0"><PersonsPanel s={s} d={d} /></div>
             </div>
           </main>
-          <Taskbar s={s} d={d} onHelp={() => setHelp(true)} />
+          <Taskbar s={s} d={d} onHelp={() => setHelp(true)} onAch={() => setAch(true)} />
 
           {s.queue.length > 0 && <EventDialog s={s} d={d} />}
           {help && <HelpDialog onClose={() => setHelp(false)} />}
+          {ach && <AchievementWall s={s} onClose={() => setAch(false)} />}
           <EraBanner s={s} d={d} />
           <Toasts s={s} d={d} />
         </div>

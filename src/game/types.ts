@@ -29,6 +29,8 @@ export interface GameEvent {
   person?: string;
   cond?: (s: GameState) => boolean;
   choices: Choice[];
+  /** 处境评估：结算前动态生成一句话，告诉玩家"这件事和你有什么关系" */
+  assess?: (s: GameState) => string | null;
   /** 行业冲击：事件发生时作用于玩家公司的临时/即时影响 */
   impact?: { label: string; incomeMult?: number; turns?: number; users?: number; fame?: number; tech?: [string | null, number] };
   /** 先驱变体：若玩家已抢先做出相关产品，事件文案与奖励会承认玩家的影响 */

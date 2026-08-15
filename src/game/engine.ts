@@ -94,6 +94,17 @@ export function agingOf(p: ProductInst, turn: number): { eraDiff: number; income
 /** 品牌溢价：声望带来收入加成 */
 export const brandMult = (fame: number) => 1 + fame / 500;
 
+/* -------- 处境评估辅助（供事件 assess 使用） -------- */
+/** 是否拥有并运营某产品 */
+export const owns = (s: GameState, def: string) => s.products.some((p) => p.def === def && p.launched && !p.shut);
+/** 是否在某回合前上线某产品（抢跑判定） */
+export const before = (s: GameState, def: string, turn: number) => s.products.some((p) => p.def === def && p.launched && (p.launchedTurn ?? 99) < turn);
+/** 用户规模对比描述 */
+export const usersVs = (mine: number, theirs: number, theirsLabel: string) =>
+  mine >= theirs
+    ? `你的 ${fmtW(mine)} 用户已超过${theirsLabel}的 ${fmtW(theirs)}——这一局，你领先。`
+    : `你的 ${fmtW(mine)} 用户对比${theirsLabel}的 ${fmtW(theirs)}，还有差距，但窗口期还在。`;
+
 /** 对手估值行情：按回合线性插值（单位：百万元） */
 export function rivalVal(curve: { pts: [number, number][] }, turn: number): number {
   const pts = curve.pts;
