@@ -17,6 +17,17 @@
     <script type="module" src="/src/main.tsx"></script>
     <script>
       (() => {
+        const GAME_W = 1440;
+        const GAME_H = 900;
+
+        const updateGameScale = () => {
+          const scale = Math.min(window.innerWidth / GAME_W, window.innerHeight / GAME_H);
+          document.documentElement.style.setProperty('--game-scale', String(Math.max(scale, 0.1)));
+        };
+        updateGameScale();
+        window.addEventListener('resize', updateGameScale);
+        window.addEventListener('orientationchange', updateGameScale);
+
         const enterLandscapeGame = async () => {
           try {
             if (document.fullscreenEnabled && !document.fullscreenElement) {
@@ -26,6 +37,7 @@
           try {
             if (screen.orientation?.lock) await screen.orientation.lock('landscape');
           } catch (_) {}
+          updateGameScale();
         };
 
         document.addEventListener('click', (event) => {
