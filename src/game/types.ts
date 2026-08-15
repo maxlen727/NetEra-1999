@@ -1,5 +1,7 @@
 export interface Effect {
   funds?: number;
+  /** 按当季收入的百分比罚没（监管类罚款用，正数表示罚没比例，如 0.5 = 罚掉 50% 当季收入） */
+  fundsPct?: number;
   users?: number;
   fame?: number;
   team?: number;
@@ -37,6 +39,8 @@ export interface GameEvent {
   impact?: { label: string; incomeMult?: number; turns?: number; users?: number; fame?: number; tech?: [string | null, number] };
   /** 产品级竞争冲击：若玩家拥有该产品，事件主角会直接挤压其业务 */
   competes?: { product: string; label: string; mult: number; turns: number; heat?: number; users?: number; note: string };
+  /** 监管审查事件：强制下线当季收入最高的产品两个季度 */
+  regulatory?: boolean;
   /** 先驱变体：若玩家已抢先做出相关产品，事件文案与奖励会承认玩家的影响 */
   variant?: { when: (s: GameState) => boolean; body?: string; note?: string; bonus?: Effect };
 }
@@ -105,6 +109,8 @@ export interface ProductInst {
   shut?: boolean;
   /** 首次落后于时代的回合号（按产品类型所属时代判定） */
   behindSince?: number;
+  /** 被监管强制下线的截止回合（该回合之前无收入） */
+  offlineUntil?: number;
 }
 
 /** 行业冲击波：重大历史事件对全行业（或特定产品）的临时影响 */

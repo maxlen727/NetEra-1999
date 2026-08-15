@@ -211,12 +211,18 @@ export function valuation(s: GameState): number {
   return Math.round(v);
 }
 
+export const isOffline = (p: ProductInst, turn: number) => !!p.offlineUntil && turn < p.offlineUntil;
+
 export function productIncome(s: GameState, p: ProductInst): number {
   const d = productDef(p.def);
   const diff = diffOf(s);
   const mult = eraOf(s.turn).mult;
   const pm = priceMode(p);
   const ag = agingOf(p, s.turn);
+  /* 监管下线期间：零收入 */
+  if (isOffline(p, s.turn)) {
+    return 0;
+  }
   /* rot：落后时代满 3 季，产品强制亏损（收入为负，持续失血） */
   if (ag.rot) {
     return -upkeepOf(p, s.turn) * 0.6;
@@ -255,6 +261,7 @@ export function quarterReport(s: GameState) {
   const rows = launched.map((p) => ({
     name: productDef(p.def).name, def: p.def, level: p.level,
     val: productIncome(s, p), upkeep: upkeepOf(p, s.turn), aging: agingOf(p, s.turn).eraDiff,
+    offline: isOffline(p, s.turn),
   }));
   const revenue = rows.reduce((a, r) => a + r.val, 0);
   const upkeep = upkeepSum(s);
@@ -278,7 +285,9 @@ export function researchSpeed(s: GameState) {
 }
 
 export function organicGrowth(s: GameState) {
+  /* 下线产品无法获客 */
   const pull = active(s)
+    .filter((p) => !isOffline(p, s.turn))
     .reduce((a, p) => a + productDef(p.def).pull * priceMode(p).pullMult * heatPullMult(p) * agingOf(p, s.turn).pull, 0);
   let g = (0.15 + s.fame * 0.04 + pull * 0.6) * Math.pow(eraOf(s.turn).mult, 0.8) * diffOf(s).growthMult;
   if (has(s, 'p_user')) g *= 1.4;
@@ -337,6 +346,13 @@ export function newGame(name: string, trackId: string, difficultyId: string = 'n
 function applyFx(s: GameState, fx: Choice['fx']): GameState {
   let n = { ...s, flags: { ...s.flags }, rel: { ...s.rel }, prog: { ...s.prog } };
   if (fx.funds) n.funds = +(n.funds + fx.funds).toFixed(1);
+  /* 监管类罚款：按当季收入的百分比动态罚没（越赚罚越狠） */
+  if (fx.fundsPct) {
+    const revenue = quarterReport(s).revenue;
+    const penalty = +(revenue * fx.fundsPct).toFixed(1);
+    n.funds = +(n.funds - penalty).toFixed(1);
+    n = mkLog(n, 'warn', `【罚单】监管罚没当季收入的 ${Math.round(fx.fundsPct * 100)}% = ${penalty} 万（当季收入 ${revenue.toFixed(1)} 万）。`);
+  }
   if (fx.users) n.users = Math.max(0, +(n.users + fx.users).toFixed(1));
   if (fx.fame) n.fame = clamp(+(n.fame + fx.fame).toFixed(1), 0, 100);
   if (fx.team) n.team = Math.max(1, n.team + fx.team);
@@ -445,6 +461,15 @@ function endTurn(prev: GameState): GameState {
     }
   }
   // 未指定研发方向时，techPts 作为技术储备计入估值
+
+  /* 3.4 监管下线期满：产品恢复运营 */
+  for (const p of s.products) {
+    if (p.launched && p.offlineUntil && s.turn >= p.offlineUntil) {
+      p.offlineUntil = undefined;
+      s = mkLog(s, 'gain', `【恢复运营】「${productDef(p.def).name}」完成合规整改，重新上线！`);
+      s = toast(s, `${productDef(p.def).name} 恢复运营`, 'good');
+    }
+  }
 
   /* 3. 财务结算 */
   const rep = quarterReport(s);
@@ -777,6 +802,22 @@ export function reducer(s: GameState, a: Action): GameState {
       if (amplify) n = mkLog(n, 'warn', '【压力反噬】你树大招风，这次危机的代价被放大了。');
       if (gainF > 0) n = { ...n, funds: +(n.funds + gainF).toFixed(1) };
       if (ev.person) n = grantMet(n, ev.person);
+      /* 监管审查：强制下线当季收入最高的产品 2 个季度 + 用户流失（罚款由选项 fundsPct 结算） */
+      if (ev.regulatory) {
+        const candidates = active(n).filter((p) => !isOffline(p, n.turn));
+        if (candidates.length) {
+          const top = candidates.reduce((a, b) => (productIncome(n, b) > productIncome(n, a) ? b : a));
+          const d = productDef(top.def);
+          n = { ...n, products: n.products.map((p) => (p.uid === top.uid ? { ...p, offlineUntil: n.turn + 2 } : p)) };
+          const lost = Math.max(2, +(n.users * 0.08).toFixed(1));
+          n.users = Math.max(0, +(n.users - lost).toFixed(1));
+          n = mkLog(n, 'warn', `【监管审查】「${d.name}」因内容不合规被责令下线整改 2 个季度：期间零收入、流失用户 ${lost} 万。`);
+          n = toast(n, `「${d.name}」被监管下线 2 季`, 'bad');
+          n = { ...n, shockBanner: { label: '监管审查 · 产品被下线', detail: `「${d.name}」被责令下线 2 个季度：期间零收入、用户持续流失，另处罚没当季收入 50%。`, good: false } };
+        } else {
+          n = mkLog(n, 'company', '【监管审查】监管上门检查，但你暂无在营的主力产品，仅被口头警告。');
+        }
+      }
       /* 行业冲击波：重大事件对全行业的临时影响（门户时代负面冲击减半，新手保护） */
       if (ev.impact) {
         if (ev.impact.incomeMult && ev.impact.turns) {

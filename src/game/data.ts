@@ -827,6 +827,16 @@ export const RANDOMS: GameEvent[] = [
     ],
   },
   {
+    id: 'r_regulatory', turn: -1, kind: 'special', neg: true, regulatory: true,
+    title: '监管审查 · 内容违规',
+    cond: (s) => s.turn >= 26 && s.products.some((p) => p.launched && !p.shut && !(p.offlineUntil && s.turn < p.offlineUntil)),
+    body: '网信部门突击检查，认定你的主力产品存在大量不合规内容（低俗信息、侵权盗版、诱导消费），当场下达《责令整改通知书》：产品立即下线整改两个季度，限期缴清罚款——按你当季收入的 50% 顶格处罚。法务总监脸色惨白地递上文件，全公司鸦雀无声。',
+    choices: [
+      { label: '连夜整改，全额缴罚', hint: '罚没当季收入 50% · 主力产品下线 2 季', fx: { fundsPct: 0.5, fame: -1, flags: ['regulatory_comply'], log: '你连夜下架违规内容、组建审核团队，全额缴纳罚款。产品将在 2 个季度后恢复运营。' } },
+      { label: '请律师团队申诉', hint: '罚没当季收入 50% · 申诉失败声望再 −3', fx: { fundsPct: 0.5, fame: -4, flags: ['regulatory_appeal'], log: '律师团队申诉被驳回，罚款照缴，还因「态度不端正」被通报批评，声望扫地。' } },
+    ],
+  },
+  {
     id: 'r_festival', turn: -1, kind: 'random', title: '春节流量洪峰',
     body: '春运开启，返乡人潮在网吧和家里的电脑上刷起了你的网站。除夕夜服务器负载创新高，这是甜蜜的负担。',
     choices: [
