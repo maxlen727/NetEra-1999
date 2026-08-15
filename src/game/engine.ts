@@ -46,7 +46,8 @@ const EV_ACQ: GameEvent = {
 
 export function findEvent(id: string): GameEvent | undefined {
   if (id === 'ev_acq') return EV_ACQ;
-  return EVENTS.find((e) => e.id === id);
+  /* 历史事件与随机/突发/压力事件都要能查到——漏掉 RANDOMS 会导致随机事件入队后被「净化」误删 */
+  return EVENTS.find((e) => e.id === id) ?? RANDOMS.find((e) => e.id === id);
 }
 
 /* ---------------- buff 查询 ---------------- */

@@ -714,8 +714,18 @@ export function Taskbar({ s, d, onHelp, onAch }: { s: GameState; d: DP; onHelp: 
           {Icons.warn(13)} 跳过异常事件
         </Btn>
       )}
-      <div className="bevel-in bg-white px-2 py-1 text-[11px] hidden md:block text-[#5a5750]">
-        {stuck ? '检测到异常事件记录，已提供跳过按钮（通常会自动修复）' : waiting ? '有时代事件待处理…' : s.ap > 0 ? `剩余 ${s.ap} 点行动点，花完再结束回合更划算` : '行动点用完了，进入下一季度吧'}
+      <div className={`bevel-in px-2 py-1 text-[11px] hidden md:block ${waiting ? 'bg-[#fdecea] text-[var(--alert)] font-bold animate-pulse' : 'bg-white text-[#5a5750]'}`}>
+        {stuck
+          ? '检测到异常事件记录，已提供跳过按钮（通常会自动修复）'
+          : waiting
+            ? (() => {
+                const ev = findEvent(s.queue[0]);
+                const isNeg = !!(ev as { neg?: boolean })?.neg;
+                return `${isNeg ? '⚡ 突发事件' : '📜 事件'}待处理：「${ev?.title ?? '未知'}」— 在中央弹窗中做出选择`;
+              })()
+            : s.ap > 0
+              ? `剩余 ${s.ap} 点行动点，花完再结束回合更划算`
+              : '行动点用完了，进入下一季度吧'}
       </div>
       <div className="flex-1 min-w-0 hidden sm:flex items-center gap-2 bg-[#101418] px-2 py-1 overflow-hidden" title="对手估值行情（百万元）">
         <span className="font-disp text-[11px] shrink-0 text-[#e8c15a]">对手观察</span>
