@@ -463,6 +463,7 @@ function endTurn(prev: GameState): GameState {
 
   /* 4.2 上市季度：合规成本 + 股权结构惩罚 + 市值波动 + 财报压力 */
   if (s.ipo) {
+    const ipo = s.ipo; // 局部承接，避免中途 s 重赋值导致窄化失效
     /* 股权不健康：创始人持股越低，治理成本越高、市场信心越差 */
     let compliance = 2.5;
     let confPenalty = 0;
@@ -480,9 +481,9 @@ function endTurn(prev: GameState): GameState {
     s.funds = +(s.funds - compliance).toFixed(1);
     const netNow = quarterReport(s).net;
     const drift = clamp(netNow / 150, -0.15, 0.25) + confPenalty + (Math.random() - 0.45) * 0.15;
-    const newCap = Math.max(50, Math.round(s.ipo.cap * (1 + drift)));
-    const up = newCap >= s.ipo.cap;
-    s.ipo = { ...s.ipo, cap: newCap };
+    const newCap = Math.max(50, Math.round(ipo.cap * (1 + drift)));
+    const up = newCap >= ipo.cap;
+    s.ipo = { ...ipo, cap: newCap };
     s = mkLog(s, up ? 'gain' : 'warn', `上市后季报：本季度${netNow >= 0 ? '盈利' : '亏损'}，市值${up ? '上涨' : '回撤'}至 ${fmtVal(newCap)}（合规成本 −${compliance} 万${confPenalty ? ' · 含股权折价' : ''}）。`);
     if (netNow < 0) s.fame = clamp(s.fame - 1, 0, 100); // 财报压力
   }
@@ -595,6 +596,10 @@ function endTurn(prev: GameState): GameState {
       const pick = specials[Math.floor(Math.random() * specials.length)];
       s.flags[`used_${pick.id}`] = true;
       queue.push(pick.id);
+      if (pick.neg) {
+        s.shockBanner = { label: pick.title, detail: '一起突发负面事件正在发生，处理不当将付出代价。请在事件窗口中做出应对。', good: false };
+        s = mkLog(s, 'warn', `【突发事件】${pick.title}！`);
+      }
     }
   }
 
@@ -606,6 +611,11 @@ function endTurn(prev: GameState): GameState {
       const pick = pool[Math.floor(Math.random() * pool.length)];
       s.flags[`used_${pick.id}`] = true;
       queue.push(pick.id);
+      /* 负面突发事件：红色全屏警报，确保玩家注意到 */
+      if (pick.neg) {
+        s.shockBanner = { label: pick.title, detail: '一起突发负面事件正在发生，处理不当将付出代价。请在事件窗口中做出应对。', good: false };
+        s = mkLog(s, 'warn', `【突发事件】${pick.title}！`);
+      }
     }
   }
 

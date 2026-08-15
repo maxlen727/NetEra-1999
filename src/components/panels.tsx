@@ -5,6 +5,7 @@ import {
   ERAS, PERSONS, POLICIES, PRODUCTS, TECHS, TOTAL_TURNS, eraOf, findEvent, fmtVal, fmtW,
   organicGrowth, personDef, productDef, quarterReport, raiseOffer, acceptRaise, researchSpeed, techDef, turnLabel, valuation,
   choiceCost, productUpgradeCost, serverUpgradeCost, rivalVal, nextResearchable, productIncome, priceMode, opsDef, agingOf,
+  teamText, teamUnitOf, productShocks,
 } from '../game/engine';
 import type { Action, GameState } from '../game/types';
 import { Btn, Icons, Spark, Win } from './ui';
@@ -159,10 +160,10 @@ export function CompanyPanel({ s, d }: { s: GameState; d: DP }) {
             {rep.rows.map((r) => (
               <div key={r.name} className="flex justify-between">
                 <span>{r.name}{r.level > 1 && <b className="text-[#b34a00]"> Lv.{r.level}</b>}</span>
-                <b className="text-[var(--money)]">+{r.val.toFixed(1)}</b>
+                <b className={r.val >= 0 ? 'text-[var(--money)]' : 'text-[var(--alert)]'}>{r.val >= 0 ? '+' : ''}{r.val.toFixed(1)}</b>
               </div>
             ))}
-            <div className="flex justify-between border-t border-[#d8d4c6] pt-0.5 mt-0.5"><span>人力成本（{s.team} 人）</span><b className="text-[var(--alert)]">−{rep.salary.toFixed(1)}</b></div>
+            <div className="flex justify-between border-t border-[#d8d4c6] pt-0.5 mt-0.5"><span>人力成本（{teamText(s)}）</span><b className="text-[var(--alert)]">−{rep.salary.toFixed(1)}</b></div>
             <div className="flex justify-between"><span>服务器 / 带宽运维</span><b className="text-[var(--alert)]">−{rep.upkeep.toFixed(1)}</b></div>
             <div className="flex justify-between border-t border-[#d8d4c6] pt-0.5 mt-0.5 font-bold"><span>净现金流</span><b style={{ color: rep.net >= 0 ? 'var(--money)' : 'var(--alert)' }}>{rep.net >= 0 ? '+' : ''}{rep.net.toFixed(1)} 万</b></div>
             <div className="flex justify-between"><span>创始人持股</span><b className={s.equity <= 34 ? 'text-[var(--alert)]' : ''}>{s.equity}%{s.equity <= 34 && ' ⚠'}</b></div>
@@ -244,9 +245,20 @@ export function CompanyPanel({ s, d }: { s: GameState; d: DP }) {
                         : <span className="text-[10px] text-[#8a5a20]">开发中 {Math.floor(p.progress * 10) / 10}/{Math.round(effW * 10) / 10}</span>}
                   </div>
                   {/* 产品老化标记 */}
-                  {p.launched && !p.shut && agingOf(p, s.turn).eraDiff > 0 && (
-                    <div className="text-[10px] text-[#b34a00] bg-[#fdf1e4] px-1.5 py-0.5 mt-1 leading-tight">
-                      产品老化（落后 {agingOf(p, s.turn).eraDiff} 个时代）：收入×{agingOf(p, s.turn).income.toFixed(2)} 拉新×{agingOf(p, s.turn).pull.toFixed(2)}——考虑迭代升级或停运
+                  {p.launched && !p.shut && agingOf(p, s.turn).eraDiff > 0 && (() => {
+                    const ag = agingOf(p, s.turn);
+                    return (
+                      <div className={`text-[10px] px-1.5 py-0.5 mt-1 leading-tight ${ag.rot ? 'text-[var(--alert)] bg-[#fdecea] font-bold' : 'text-[#b34a00] bg-[#fdf1e4]'}`}>
+                        {ag.rot
+                          ? `⚠ 强制亏损中（落后 ${ag.eraDiff} 个时代已 ${ag.behindQuarters} 季）：每季失血，用户加速流失——尽快停运或转型！`
+                          : `产品老化（落后 ${ag.eraDiff} 个时代${ag.behindQuarters > 0 ? `，已 ${ag.behindQuarters} 季` : ''}）：收入×${ag.income.toFixed(2)} 拉新×${ag.pull.toFixed(2)}——${3 - ag.behindQuarters} 季后将强制亏损`}
+                      </div>
+                    );
+                  })()}
+                  {/* 竞争冲击（如企鹅冲击 IM、支付宝冲击移动支付） */}
+                  {p.launched && !p.shut && productShocks(s, p.def).length > 0 && (
+                    <div className="text-[10px] text-[var(--alert)] bg-[#fdecea] border-l-2 border-[var(--alert)] px-1.5 py-0.5 mt-1 leading-tight">
+                      {productShocks(s, p.def).map((sh) => `⚡ ${sh.label}：收入 ×${sh.mult}（剩 ${sh.left} 季）`).join(' ')}
                     </div>
                   )}
                   {!p.launched && !p.shut && <div className="progress98 mt-1"><i style={{ width: `${Math.min(100, (p.progress / effW) * 100)}%` }} /></div>}
@@ -509,8 +521,8 @@ export function ActionsPanel({ s, d }: { s: GameState; d: DP }) {
             <ABtn title="投入 8 万做市场推广" disabled={busy || noAp || s.funds < 8} onClick={() => d({ type: 'ACT', kind: 'marketing' })}>
               {Icons.star(15)} 市场推广 <i className="not-italic text-[10px] text-[#5a5750]">1 点 + ¥8万</i>
             </ABtn>
-            <ABtn title="招聘一名员工（提升研发与开发速度，增加行动点上限）" disabled={busy || noAp || s.funds < 8 || s.team >= 30} onClick={() => d({ type: 'ACT', kind: 'hire' })}>
-              {Icons.users(15)} 招兵买马 <i className="not-italic text-[10px] text-[#5a5750]">1 点 + ¥8万</i>
+            <ABtn title={`${teamUnitOf(s.turn).hire}（提升研发与开发速度，增加行动点上限）。当前规模：${teamText(s)}`} disabled={busy || noAp || s.funds < [8, 8, 20, 35][eraOf(s.turn).id] || s.team >= 40} onClick={() => d({ type: 'ACT', kind: 'hire' })}>
+              {Icons.users(15)} 招兵买马 <i className="not-italic text-[10px] text-[#5a5750]">1 点 + ¥{[8, 8, 20, 35][eraOf(s.turn).id]}万</i>
             </ABtn>
             <ABtn title={`当前机房：${SERVER_TIERS[s.servers].name}（容量 ${SERVER_TIERS[s.servers].cap} 万用户）。用户超容量时收入 −25%、增长减半`} disabled={busy || noAp || !serverUpgradeCost(s) || s.funds < serverUpgradeCost(s)} onClick={() => d({ type: 'UPGRADE_SERVERS' })}>
               {Icons.chip(15)} 机房扩容 <i className="not-italic text-[10px] text-[#5a5750]">{serverUpgradeCost(s) ? `1 点 + ¥${serverUpgradeCost(s)}万` : '已是顶配'}</i>
@@ -750,6 +762,34 @@ export function EraBanner({ s, d }: { s: GameState; d: DP }) {
   );
 }
 
+/* ============ 时代冲击全屏横幅 ============ */
+export function ShockBanner({ s, d }: { s: GameState; d: DP }) {
+  const b = s.shockBanner;
+  if (!b) return null;
+  const good = b.good;
+  return (
+    <div
+      className="fixed inset-0 z-[60] grid place-items-center p-4 cursor-pointer"
+      style={{ background: good ? 'rgba(8,60,24,0.55)' : 'rgba(90,10,6,0.6)' }}
+      onClick={() => d({ type: 'SHOCK_BANNER_GONE' })}
+    >
+      <div className={`dialog-pop bevel-out w-full max-w-md text-center ${good ? '' : 'shadow-[0_0_40px_rgba(200,50,43,0.5)]'}`}>
+        <div className="titlebar px-3 py-1.5 flex items-center justify-center gap-2" style={good ? undefined : { background: 'linear-gradient(90deg,#8a1410,#c8322b)' }}>
+          <span>{good ? Icons.star(15) : Icons.bolt(15)}</span>
+          <span className="font-disp tracking-widest text-sm">{good ? '行业利好 · INDUSTRY BOOM' : '时代冲击 · INDUSTRY SHOCK'}</span>
+        </div>
+        <div className="p-5">
+          <div className={`font-disp text-3xl mb-2 ${good ? 'text-[var(--money)]' : 'text-[var(--alert)]'}`}>{b.label}</div>
+          <div className="text-sm text-[#3a3a3a] leading-relaxed mb-4">{b.detail}</div>
+          <div className="pixel-divider mb-4" />
+          <div className="text-[11px] text-[#8a867a] mb-3">该冲击已计入你的季度财报，可在「时代编年史」查看详情。</div>
+          <Btn primary onClick={() => d({ type: 'SHOCK_BANNER_GONE' })} className="px-8">知道了</Btn>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function Toasts({ s, d }: { s: GameState; d: DP }) {
   const color = { info: '#1c63c9', good: '#1f7a48', bad: '#c8322b', era: '#b34a00', ach: '#7a4fd0' };
   return (
@@ -780,6 +820,10 @@ export function HelpDialog({ onClose }: { onClose: () => void }) {
     ['融资', '行动点换钱：稀释股权拿 VC 的钱。创始人持股低于 34% 会被董事会否决。'],
     ['机房', '用户超过机房容量会「服务器过载」：收入 −25%、增长减半。在行动中心花 1 点 + 钱扩容。'],
     ['升级', '已上线产品可迭代到 Lv.3，每级收入 +30%。老产品别放着吃灰。'],
+    ['老化', '产品按「类型所属时代」判落后：收入/拉新随落后程度衰减；落后满 3 个季度强制亏损并加速流失用户，倒逼你停运或转型。'],
+    ['冲击', '重大历史事件会真实冲击你的财报（全屏红色横幅提醒）：如 OICQ 挤压你的 IM、支付宝冲击你的移动支付、3G 淘汰手机站。'],
+    ['先驱', '抢在历史节点前做出同类产品（如 2005 前上线移动支付），会被记为「先驱者」，事件文案改写、声望大涨。'],
+    ['股权', '上市是关键转折：募资 25% 流通，此后每季承担合规成本、股价随财报波动；创始人持股低于 34% 会被董事会持续施压。'],
     ['急救', '资金 < 30 万时可借过桥贷款 +30 万（6 期内每期自动还 7 万）。人物事件付不起钱会自动改期，绝不会卡死。'],
     ['难度', '开局三档：休闲 / 标准 / 硬核，另有一件「穿越物资」五选一。主题界面会随四个时代自动演化。'],
     ['结局', '2010 年终估值 ≥ 22 亿即 S 级「互联网传奇」；中途还可能收到巨头收购要约——卖，也是一种胜利。'],

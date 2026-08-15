@@ -693,11 +693,11 @@ export const RANDOMS: GameEvent[] = [
     ],
   },
   {
-    id: 'r_hack', turn: -1, kind: 'random', title: '黑客深夜来访',
+    id: 'r_hack', turn: -1, kind: 'random', title: '黑客深夜来访', neg: true,
     body: '凌晨三点，运维冲进你家：「数据库被拖了！」屏幕上留着一行字：「贵站漏洞已修复，请加强安全意识——一个路过的红客」。这年头的黑客，还挺讲武德。',
     choices: [
-      { label: '花钱请安全顾问', hint: '资金 −4', cost: 4, fx: { funds: -4, log: '你补上了安全短板。' } },
-      { label: '连夜自己打补丁', hint: '研发 +1', fx: { tech: [null, 1] } },
+      { label: '花钱请安全顾问 + 赔偿用户', hint: '资金 −9', cost: 9, fx: { funds: -9, fame: 1, log: '你补上了安全短板，还赔了受影响用户一笔钱。' } },
+      { label: '连夜自己打补丁', hint: '研发 +1 · 用户 −2', fx: { tech: [null, 1], users: -2, log: '补丁打上了，但流失的用户回不来了。' } },
     ],
   },
   {
@@ -709,7 +709,7 @@ export const RANDOMS: GameEvent[] = [
     ],
   },
   {
-    id: 'r_poach', turn: -1, kind: 'random', title: '核心程序员被挖角',
+    id: 'r_poach', turn: -1, kind: 'random', title: '核心程序员被挖角', neg: true,
     body: '你手下的技术骨干收到了一家门户的 offer：工资翻倍，还配 BP 机。他站在你办公室门口，欲言又止。',
     choices: [
       { label: '加薪留人', hint: '资金 −4', cost: 4, fx: { funds: -4, log: '骨干留下来了，干劲更足。' } },
@@ -758,7 +758,7 @@ export const RANDOMS: GameEvent[] = [
     ],
   },
   {
-    id: 'r_domain', turn: -1, kind: 'random', title: '域名保卫战',
+    id: 'r_domain', turn: -1, kind: 'random', title: '域名保卫战', neg: true,
     body: '有黄牛抢注了你的品牌拼音域名，开价两万。前台小妹愤愤不平：「这不是敲诈吗！」',
     choices: [
       { label: '掏钱赎回', hint: '资金 −2 · 声望 +1', cost: 2, fx: { funds: -2, fame: 1 } },
@@ -785,7 +785,7 @@ export const RANDOMS: GameEvent[] = [
     ],
   },
   {
-    id: 'r_talent', turn: -1, kind: 'random', title: '竞争对手挖角',
+    id: 'r_talent', turn: -1, kind: 'random', title: '竞争对手挖角', neg: true,
     cond: (s) => s.team >= 5,
     body: '一家财大气粗的同行开出双倍工资挖你的技术骨干，还附带解决户口。HR 拿着辞职信在门口等你定夺。',
     choices: [
@@ -794,7 +794,7 @@ export const RANDOMS: GameEvent[] = [
     ],
   },
   {
-    id: 'r_pricewar', turn: -1, kind: 'random', title: '行业价格战',
+    id: 'r_pricewar', turn: -1, kind: 'random', title: '行业价格战', neg: true,
     cond: (s) => s.products.filter((p) => p.launched && !p.shut).length >= 2,
     body: '同行发起疯狂价格战，你的客户天天拿着对手的报价单来压价。跟，伤利润；不跟，丢市场。',
     choices: [
@@ -810,12 +810,12 @@ export const RANDOMS: GameEvent[] = [
     ],
   },
   {
-    id: 'r_stockcrash', turn: -1, kind: 'special', title: '股价惊魂一日',
+    id: 'r_stockcrash', turn: -1, kind: 'special', title: '股价惊魂一日', neg: true,
     cond: (s) => !!s.ipo,
     body: '一份做空报告突袭你的公司，股价单日跳水。交易员电话被打爆，董秘问你要不要发澄清公告。',
     choices: [
-      { label: '火速澄清 + 回购', hint: '资金 −10 · 稳住市值', cost: 10, fx: { funds: -10, flags: ['stock_defend'], fame: 2, log: '你连夜发布澄清公告并启动回购，股价止住了跌势。' } },
-      { label: '冷处理', hint: '市值受挫 · 声望 −1', fx: { fame: -1, flags: ['stock_ignore'], log: '你选择沉默，股价在流言中继续下探。' } },
+      { label: '火速澄清 + 回购', hint: '资金 −15 · 稳住市值', cost: 15, fx: { funds: -15, flags: ['stock_defend'], fame: 2, log: '你连夜发布澄清公告并启动回购，股价止住了跌势。' } },
+      { label: '冷处理', hint: '市值大跌 · 声望 −3', fx: { fame: -3, users: -3, flags: ['stock_ignore'], log: '你选择沉默，股价在流言中继续下探，用户也开始流失。' } },
     ],
   },
   {

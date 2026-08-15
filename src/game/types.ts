@@ -29,6 +29,8 @@ export interface GameEvent {
   person?: string;
   cond?: (s: GameState) => boolean;
   choices: Choice[];
+  /** 负面突发事件：抽取时触发红色全屏警报 */
+  neg?: boolean;
   /** 处境评估：结算前动态生成一句话，告诉玩家"这件事和你有什么关系" */
   assess?: (s: GameState) => string | null;
   /** 行业冲击：事件发生时作用于玩家公司的临时/即时影响 */

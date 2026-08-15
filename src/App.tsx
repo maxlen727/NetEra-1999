@@ -2,7 +2,7 @@ import { Component, useEffect, useReducer, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import {
   AchievementWall, ActionsPanel, Chronicle, CompanyPanel, EraBanner, EventDialog, HelpDialog,
-  PersonsPanel, PolicyPanel, ResourceBar, Taskbar, TechPanel, Toasts,
+  PersonsPanel, PolicyPanel, ResourceBar, ShockBanner, Taskbar, TechPanel, Toasts,
 } from './components/panels';
 import { BootScreen, OverScreen, SetupScreen } from './components/screens';
 import { ERA_THEMES, eraOf } from './game/data';
@@ -79,7 +79,7 @@ export default function App() {
   }, [s.toasts]);
 
   /* -------- 音效系统：监听状态变化自动播音 -------- */
-  const sfxRef = useRef({ funds: 0, head: null as string | null, turn: -1, toastId: 0, banner: false, phase: 'boot', logId: 0 });
+  const sfxRef = useRef({ funds: 0, head: null as string | null, turn: -1, toastId: 0, banner: false, shock: false, phase: 'boot', logId: 0 });
   useEffect(() => {
     const p = sfxRef.current;
     if (s.phase === 'play' || s.phase === 'over') {
@@ -98,6 +98,7 @@ export default function App() {
         else sfx.tick();
       }
       if (s.eraBanner && !p.banner) sfx.era();
+      if (s.shockBanner && !p.shock) { if (s.shockBanner.good) sfx.ding(); else sfx.warn(); }
       if (s.phase === 'over' && p.phase !== 'over') {
         if (s.outcome?.type === 'bankrupt') sfx.sad();
         else sfx.fanfare();
@@ -106,7 +107,7 @@ export default function App() {
       if (logHead && logHead.id !== p.logId && (logHead.kind === 'history' || logHead.kind === 'person')) sfx.type();
     }
     sfxRef.current = {
-      funds: s.funds, head: s.queue[0] ?? null, turn: s.turn, banner: !!s.eraBanner, phase: s.phase,
+      funds: s.funds, head: s.queue[0] ?? null, turn: s.turn, banner: !!s.eraBanner, shock: !!s.shockBanner, phase: s.phase,
       toastId: s.toasts.length ? s.toasts[s.toasts.length - 1].id : p.toastId,
       logId: s.log.length ? s.log[0].id : p.logId,
     };
@@ -131,13 +132,20 @@ export default function App() {
     return () => clearTimeout(t);
   }, [s.eraBanner]);
 
+  /* 冲击横幅自动消失 */
+  useEffect(() => {
+    if (!s.shockBanner) return;
+    const t = setTimeout(() => d({ type: 'SHOCK_BANNER_GONE' }), 5000);
+    return () => clearTimeout(t);
+  }, [s.shockBanner]);
+
   /* 键盘：回车 = 下一回合 */
   useEffect(() => {
     const h = (e: KeyboardEvent) => {
       if (e.key !== 'Enter') return;
       const tag = (e.target as HTMLElement)?.tagName;
       if (tag === 'INPUT' || tag === 'TEXTAREA') return;
-      if (s.phase === 'play' && s.queue.length === 0 && !help && !ach) d({ type: 'END_TURN' });
+      if (s.phase === 'play' && s.queue.length === 0 && !help && !ach && !s.shockBanner) d({ type: 'END_TURN' });
     };
     window.addEventListener('keydown', h);
     return () => window.removeEventListener('keydown', h);
@@ -205,6 +213,7 @@ export default function App() {
           {help && <HelpDialog onClose={() => setHelp(false)} />}
           {ach && <AchievementWall s={s} onClose={() => setAch(false)} />}
           <EraBanner s={s} d={d} />
+          <ShockBanner s={s} d={d} />
           <Toasts s={s} d={d} />
         </div>
       </div>
