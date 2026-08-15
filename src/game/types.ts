@@ -101,6 +101,8 @@ export interface ProductInst {
   heat: number;
   /** 已停运 */
   shut?: boolean;
+  /** 首次落后于时代的回合号（按产品类型所属时代判定） */
+  behindSince?: number;
 }
 
 /** 行业冲击波：重大历史事件对全行业（或特定产品）的临时影响 */

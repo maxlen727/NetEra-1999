@@ -92,24 +92,30 @@ export function productShockMult(s: GameState, def: string): number {
 /** 产品上的竞争冲击标签（UI 展示用） */
 export const productShocks = (s: GameState, def: string) => s.shocks.filter((sh) => sh.product === def);
 /**
- * 产品老化（v3 强化）：落后时代越远，收入与 ARPU 急剧衰减，且老产品开始流失用户。
- * 让「老产品还能躺赚」变成「老产品逐渐失血」，倒逼停运/迭代。
+ * 产品老化（v4）：按「产品类型所属时代」对比当前时代（不是上线时间——晚上线的 BBS 照样是过时货）。
+ * 落后 1 个时代满 3 个季度进入 rot：收入强制转负（亏损）、加速流失用户，倒逼停运或转型。
  */
-export function agingOf(p: ProductInst, turn: number): { eraDiff: number; income: number; arpu: number; pull: number; churn: number } {
-  const launchEra = eraOf(p.launchedTurn ?? 0).id;
-  const eraDiff = Math.max(0, eraOf(turn).id - launchEra);
+export function agingOf(p: ProductInst, turn: number): { eraDiff: number; income: number; arpu: number; pull: number; churn: number; rot: boolean; behindQuarters: number } {
+  const prodEra = techDef(productDef(p.def).tech).era;
+  const curEra = eraOf(turn).id;
+  const eraDiff = Math.max(0, curEra - prodEra);
+  const behindQuarters = eraDiff >= 1 && p.behindSince != null ? Math.max(0, turn - p.behindSince) : 0;
+  const rot = eraDiff >= 1 && behindQuarters >= 3;
   return {
     eraDiff,
     income: Math.pow(0.45, eraDiff),          // 收入断崖式衰减
     arpu: Math.pow(0.45, eraDiff),            // 用户付费意愿同步下滑
     pull: Math.pow(0.7, eraDiff),             // 拉新能力衰减
-    churn: eraDiff >= 2 ? 0.5 * (eraDiff - 1) : 0, // 落后 2 个时代起，每季流失用户（万）
+    churn: rot ? 1.5 + eraDiff : eraDiff * 0.3, // rot 后每季大幅流失用户（万）
+    rot,
+    behindQuarters,
   };
 }
-/** 单产品运维成本：老产品运维成本随时代通胀 */
+/** 单产品运维成本：老产品运维成本随「类型落后」通胀 */
 export function upkeepOf(p: ProductInst, turn: number): number {
   const d = productDef(p.def);
-  const eraDiff = Math.max(0, eraOf(turn).id - eraOf(p.launchedTurn ?? 0).id);
+  const prodEra = techDef(d.tech).era;
+  const eraDiff = Math.max(0, eraOf(turn).id - prodEra);
   return d.upkeep * (1 + 0.6 * eraDiff);
 }
 /** 品牌溢价：声望带来收入加成 */
@@ -160,26 +166,27 @@ export function rivalVal(curve: { pts: [number, number][] }, turn: number): numb
 export function valuation(s: GameState): number {
   /* 已上市：以市值为准 */
   if (s.ipo) return Math.round(s.ipo.cap);
-  /* 估值 v3：用平方根缩放用户与营收，压制后期数值膨胀。
-     现金、技术、机房线性计；用户/营收边际递减。 */
-  let v = Math.min(s.funds, 800) * 0.5; // 现金（封顶，避免囤钱刷估值）
-  v += Math.sqrt(Math.max(0, s.users)) * 16; // 用户资产（边际递减）
-  v += s.fame * 4 + s.techPts * 1.5;
-  v += s.researched.length * 10;
+  /* 估值 v4：每个分项都设硬上限，杜绝后期任何单一维度把估值撑爆。
+     健康终局估值 ≈ 1600~2400（S 级门槛 2200），与历史巨头榜同量级。 */
+  let v = Math.min(Math.max(0, s.funds), 800) * 0.5;                       // 现金 ≤400
+  v += Math.min(Math.sqrt(Math.max(0, s.users)) * 7, 240);                // 用户资产 ≤240
+  v += Math.min(s.fame * 2, 160) + Math.min(s.techPts * 1.2, 60);         // 品牌 ≤160，技术储备 ≤60
+  v += Math.min(s.researched.length * 8, 128);                            // 技术组合 ≤128
+  let prodV = 0;
   for (const p of s.products) {
     if (p.shut) continue;
     const d = productDef(p.def);
-    v += p.launched
-      ? d.devCost * 0.4 + d.base * 1.5 + ((p.level || 1) - 1) * 6 + (p.heat || 0) * 0.05
-      : d.devCost * 0.25;
+    prodV += p.launched
+      ? d.devCost * 0.3 + d.base * 1.1 + ((p.level || 1) - 1) * 5 + (p.heat || 0) * 0.04
+      : d.devCost * 0.2;
   }
-  v += s.servers * 15; // 机房资产
-  v += eraOf(s.turn).id * 30; // 时代红利
-  /* 营收贡献：平方根缩放，避免后期营收线性堆爆估值 */
-  v += Math.sqrt(Math.max(0, quarterReport(s).revenue)) * 14;
+  v += Math.min(prodV, 360);                                              // 产品组合 ≤360
+  v += Math.min(s.servers * 12, 48);                                      // 机房 ≤48
+  v += eraOf(s.turn).id * 25;                                             // 时代红利 ≤75
+  v += Math.min(Math.sqrt(Math.max(0, quarterReport(s).revenue)) * 10, 300); // 营收(P/S) ≤300
   const pays = Object.keys(s.flags).filter((f) => f.startsWith('payoff_')).length;
   const invs = Object.keys(s.flags).filter((f) => f.startsWith('inv_')).length;
-  v += pays * 30 + Math.max(0, invs - pays) * 12;
+  v += Math.min(pays * 25 + Math.max(0, invs - pays) * 10, 150);          // 投资布局 ≤150
   if (has(s, 'p_cap')) v *= 1.15;
   if (adv(s, 'xiong')) v *= 1.08;
   if (adv(s, 'wang')) v *= 1.1;
@@ -192,8 +199,13 @@ export function productIncome(s: GameState, p: ProductInst): number {
   const mult = eraOf(s.turn).mult;
   const pm = priceMode(p);
   const ag = agingOf(p, s.turn);
-  /* 用户付费额随产品老化衰减（arpu），基础收入也随时代褪色（income） */
-  let inc = (d.base + s.users * d.ucoef * ag.arpu) * mult * diff.revMult * levelMult(p) * pm.incomeMult * heatIncomeMult(p)
+  /* rot：落后时代满 3 季，产品强制亏损（收入为负，持续失血） */
+  if (ag.rot) {
+    return -upkeepOf(p, s.turn) * 0.6;
+  }
+  /* 用户付费额随产品老化衰减（arpu）；用户贡献设软上限（基础收入 ×2.5），防后期数值爆炸 */
+  const userPart = Math.min(s.users * d.ucoef * ag.arpu, d.base * 2.5);
+  let inc = (d.base + userPart) * mult * diff.revMult * levelMult(p) * pm.incomeMult * heatIncomeMult(p)
     * shockMult(s) * productShockMult(s, p.def) * ag.income * brandMult(s.fame);
   if (has(s, 'p_free')) inc *= 0.9;
   if (adv(s, 'mayun')) inc *= 1.1;
@@ -420,26 +432,58 @@ function endTurn(prev: GameState): GameState {
   const rep = quarterReport(s);
   s.funds = +(s.funds + rep.net).toFixed(1);
 
+  /* 3.5 记录产品首次落后时代的回合（按产品类型判定，用于 rot 强制亏损计时） */
+  for (const p of s.products) {
+    if (p.launched && !p.shut && p.behindSince == null) {
+      const prodEra = techDef(productDef(p.def).tech).era;
+      if (eraOf(s.turn).id > prodEra) p.behindSince = s.turn;
+    }
+  }
+  /* rot 预警：刚开始亏损的落后产品单独提示 */
+  for (const p of active(s)) {
+    const ag = agingOf(p, s.turn);
+    const flag = `rotwarn_${p.uid}`;
+    if (ag.rot && !s.flags[flag]) {
+      s.flags = { ...s.flags, [flag]: true };
+      s = mkLog(s, 'warn', `【产品亏损】「${productDef(p.def).name}」已落后 ${ag.eraDiff} 个时代超过 3 个季度，开始持续亏损（每季 −${(upkeepOf(p, s.turn) * 0.6).toFixed(1)} 万）并大量流失用户。停运或转型刻不容缓！`);
+      s = toast(s, `「${productDef(p.def).name}」开始亏损`, 'bad');
+    }
+  }
+
   /* 4. 用户与声望 */
-  /* 老产品流失用户（落后 2 个时代起），与新增相抵；单季净变化下限 −3 万防雪崩 */
+  /* 落后产品流失用户（rot 后加速流失），与新增相抵；单季净变化下限 −5 万 */
   const churn = active(s).reduce((a, p) => a + agingOf(p, s.turn).churn, 0);
-  const netUsers = clamp(organicGrowth(s) - churn, -3, Infinity);
+  const netUsers = clamp(organicGrowth(s) - churn, -5, Infinity);
   s.users = Math.max(0, +(s.users + netUsers).toFixed(1));
-  if (churn > 0) {
+  if (churn > 0.3) {
     s = mkLog(s, 'warn', `老产品跟不上时代，本季流失用户 ${churn.toFixed(1)} 万。考虑停运落后产品或迭代升级。`);
   }
   const fameGain = active(s).reduce((a, p) => a + productDef(p.def).fame, 0);
   s.fame = clamp(+(s.fame + fameGain * (adv(s, 'zhang') ? 1.3 : 1) - 0.3).toFixed(1), 0, 100);
 
-  /* 4.2 上市季度：合规成本 + 市值波动 + 财报压力 */
+  /* 4.2 上市季度：合规成本 + 股权结构惩罚 + 市值波动 + 财报压力 */
   if (s.ipo) {
-    s.funds = +(s.funds - 2.5).toFixed(1); // 合规 / 审计 / 信披成本
+    /* 股权不健康：创始人持股越低，治理成本越高、市场信心越差 */
+    let compliance = 2.5;
+    let confPenalty = 0;
+    if (s.equity < 20) {
+      compliance = 8;
+      confPenalty = -0.12;
+      s.fame = clamp(s.fame - 2, 0, 100);
+      s = mkLog(s, 'warn', `【控制权危机】创始人持股仅 ${s.equity}%，机构投资者联合逼宫，治理成本飙升至 8 万/季，市场信心崩塌。`);
+    } else if (s.equity < 34) {
+      compliance = 4.5;
+      confPenalty = -0.06;
+      s.fame = clamp(s.fame - 1, 0, 100);
+      s = mkLog(s, 'warn', `【股权不健康】创始人持股 ${s.equity}% 低于安全线 34%，董事会博弈加剧，合规成本升至 4.5 万/季。`);
+    }
+    s.funds = +(s.funds - compliance).toFixed(1);
     const netNow = quarterReport(s).net;
-    const drift = clamp(netNow / 150, -0.15, 0.25) + (Math.random() - 0.45) * 0.15;
+    const drift = clamp(netNow / 150, -0.15, 0.25) + confPenalty + (Math.random() - 0.45) * 0.15;
     const newCap = Math.max(50, Math.round(s.ipo.cap * (1 + drift)));
     const up = newCap >= s.ipo.cap;
     s.ipo = { ...s.ipo, cap: newCap };
-    s = mkLog(s, up ? 'gain' : 'warn', `上市后季报：本季度${netNow >= 0 ? '盈利' : '亏损'}，市值${up ? '上涨' : '回撤'}至 ${fmtVal(newCap)}（合规成本 −2.5 万）。`);
+    s = mkLog(s, up ? 'gain' : 'warn', `上市后季报：本季度${netNow >= 0 ? '盈利' : '亏损'}，市值${up ? '上涨' : '回撤'}至 ${fmtVal(newCap)}（合规成本 −${compliance} 万${confPenalty ? ' · 含股权折价' : ''}）。`);
     if (netNow < 0) s.fame = clamp(s.fame - 1, 0, 100); // 财报压力
   }
 
