@@ -1,5 +1,4 @@
-node_modules/
-.next/
-dist/
-build/
-*.log
+```
+# No build artifacts, dependencies, or temporary files detected in changes
+# Only source/config files (.md, .ts) were added/modified
+```

@@ -81,9 +81,16 @@ export const heatIncomeMult = (p: { heat?: number }) => 1 + (p.heat || 0) / 250;
 export const heatPullMult = (p: { heat?: number }) => 1 + (p.heat || 0) / 300;
 export const opsDef = (kind: 'ad' | 'content') => OPS_ACTIONS.find((o) => o.kind === kind)!;
 
-/** 行业冲击波对收入的总倍率 */
-export function shockMult(s: GameState): number {
-  return s.shocks.reduce((a, sh) => a * sh.mult, 1);
+/** 行业冲击波对收入的总倍率，可按产品类型过滤 */
+export function shockMult(s: GameState, productType?: string): number {
+  let mult = 1;
+  for (const sh of s.shocks) {
+    // 如果没有指定产品类型，或该冲击波影响所有类型，或明确影响该产品类型
+    if (!sh.affectTypes || !productType || sh.affectTypes.includes(productType)) {
+      mult *= sh.mult;
+    }
+  }
+  return mult;
 }
 /** 产品老化：上线时代与当前时代相差越远，收入/拉新越低 */
 export function agingOf(p: ProductInst, turn: number): { eraDiff: number; income: number; pull: number } {
@@ -140,8 +147,9 @@ export function productIncome(s: GameState, p: ProductInst): number {
   const diff = diffOf(s);
   const mult = eraOf(s.turn).mult;
   const pm = priceMode(p);
+  // 传入产品类型，让冲击波可以精准影响特定品类
   let inc = (d.base + s.users * d.ucoef) * mult * diff.revMult * levelMult(p) * pm.incomeMult * heatIncomeMult(p)
-    * shockMult(s) * agingOf(p, s.turn).income * brandMult(s.fame);
+    * shockMult(s, p.def) * agingOf(p, s.turn).income * brandMult(s.fame);
   if (has(s, 'p_free')) inc *= 0.9;
   if (adv(s, 'mayun')) inc *= 1.1;
   if (has(s, 'p_sp2') && (p.def === 'p_sp' || p.def === 'p_game')) inc *= 1.35;
@@ -225,6 +233,7 @@ export function newGame(name: string, trackId: string, difficultyId: string = 'n
     policies: [], researched: ['t_bbs'], cur: null, prog: {}, techPts: diff.techPts, equity: 100,
     products: [], rel: {}, met: [], advisors: [], flags: {}, log: [], queue: [],
     toasts: [], history: [], eraBanner: null, outcome: null, seq: 100,
+    historyOverrides: {}, randomEventsTriggered: [],
   };
   const [tid, amt] = tr.techBoost;
   s.prog = { [tid]: amt };
@@ -605,8 +614,42 @@ export function reducer(s: GameState, a: Action): GameState {
       /* 行业冲击波：重大事件对全行业的临时影响 */
       if (ev.impact) {
         if (ev.impact.incomeMult && ev.impact.turns) {
-          n = { ...n, shocks: [...n.shocks.filter((sh) => sh.label !== ev.impact!.label), { label: ev.impact.label, mult: ev.impact.incomeMult, left: ev.impact.turns }] };
-          n = mkLog(n, 'history', `【行业冲击】${ev.title}引发「${ev.impact.label}」：全行业收入 ×${ev.impact.incomeMult}，持续 ${ev.impact.turns} 个季度。`);
+          // 检查玩家是否已抢先推出相关产品，若有则改变历史
+          const playerHasRelevantProduct = s.products.some(p => {
+            // 根据事件 ID 判断相关产品类型
+            const relevantProducts: Record<string, string[]> = {
+              'ev_oicq': ['p_im'],
+              'ev_crash': ['p_portal', 'p_mail'],
+              'ev_wy': ['p_sp'],
+              'ev_cq': ['p_game'],
+              'ev_lanjisu': ['p_game', 'p_portal'],
+              'ev_sars': ['p_ec', 'p_im'],
+              'ev_sp_crack': ['p_sp'],
+              'ev_alipay': ['p_pay'],
+              'ev_iphone': ['p_mobile'],
+              'ev_3g': ['p_mobile', 'p_wap'],
+              'ev_weibo': ['p_social'],
+              'ev_3q': ['p_im', 'p_security'],
+            };
+            const rel = relevantProducts[ev.id] || [];
+            return p.launched && !p.shut && rel.includes(p.def);
+          });
+          
+          // 若玩家抢先推出产品，历史被改变，冲击波效果减弱或反转
+          let effectiveMult = ev.impact.incomeMult;
+          if (playerHasRelevantProduct) {
+            n.flags[`override_${ev.id}`] = true; // 标记历史被改变
+            // 玩家领先时，负面冲击变为正面，正面冲击增强
+            if (ev.impact.incomeMult < 1) {
+              effectiveMult = 1 + (1 - ev.impact.incomeMult) * 0.5; // 负面变正面
+            } else {
+              effectiveMult = ev.impact.incomeMult * 1.15; // 正面更强
+            }
+            n = mkLog(n, 'gain', `【历史修正】因你抢先布局${ev.title}相关领域，行业冲击被你的创新所改变！`);
+          }
+          
+          n = { ...n, shocks: [...n.shocks.filter((sh) => sh.label !== ev.impact!.label), { label: ev.impact.label, mult: effectiveMult, left: ev.impact.turns, sourceEventId: ev.id }] };
+          n = mkLog(n, 'history', `【行业冲击】${ev.title}引发「${ev.impact.label}」：全行业收入 ×${effectiveMult.toFixed(2)}，持续 ${ev.impact.turns} 个季度。${playerHasRelevantProduct ? '（你的领先地位改变了冲击方向）' : ''}`);
         }
         if (ev.impact.users) n.users = Math.max(0, +(n.users + ev.impact.users).toFixed(1));
         if (ev.impact.fame) n.fame = clamp(+(n.fame + ev.impact.fame).toFixed(1), 0, 100);

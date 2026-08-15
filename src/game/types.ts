@@ -100,7 +100,13 @@ export interface ProductInst {
 }
 
 /** 行业冲击波：重大历史事件对全行业的临时影响 */
-export interface Shock { label: string; mult: number; left: number }
+export interface Shock { 
+  label: string; 
+  mult: number; 
+  left: number; 
+  affectTypes?: string[]; // 指定受影响的产品类型 ['p_sp', 'p_game']
+  sourceEventId?: string; // 来源事件 ID，用于追踪
+}
 
 /** 上市信息 */
 export interface IpoInfo {
@@ -187,6 +193,12 @@ export interface GameState {
   eraBanner: { name: string; sub: string } | null;
   outcome: Outcome | null;
   seq: number;
+  
+  // ========== 新增字段：历史修正与随机事件 ==========
+  /** 历史修正标记：记录哪些历史事件被玩家改变 */
+  historyOverrides: Record<string, boolean>;
+  /** 已触发的随机事件 ID 列表（用于避免重复触发） */
+  randomEventsTriggered: string[];
 }
 
 export type Action =
