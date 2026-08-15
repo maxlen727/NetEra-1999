@@ -1,5 +1,5 @@
 import {
-  ACHIEVEMENTS, DIFFICULTIES, ERAS, EVENTS, HISTORICAL_BOARD, OPS_ACTIONS, PERKS, PERSONS, POLICIES,
+  ACHIEVEMENTS, DIFFICULTIES, ERAS, EVENTS, HISTORICAL_BOARD, MILESTONES, OPS_ACTIONS, PERKS, PERSONS, POLICIES,
   PRICE_MODES, PRODUCTS, RANDOMS, RANKS, RIVAL_CURVES, SERVER_TIERS, TECHS, TOTAL_TURNS, TRACKS, eraOf, turnLabel,
 } from './data';
 import type { Action, Choice, GameEvent, GameState, Outcome, PriceMode, ProductDef, ProductInst } from './types';
@@ -81,6 +81,19 @@ export const heatIncomeMult = (p: { heat?: number }) => 1 + (p.heat || 0) / 250;
 export const heatPullMult = (p: { heat?: number }) => 1 + (p.heat || 0) / 300;
 export const opsDef = (kind: 'ad' | 'content') => OPS_ACTIONS.find((o) => o.kind === kind)!;
 
+/** 行业冲击波对收入的总倍率 */
+export function shockMult(s: GameState): number {
+  return s.shocks.reduce((a, sh) => a * sh.mult, 1);
+}
+/** 产品老化：上线时代与当前时代相差越远，收入/拉新越低 */
+export function agingOf(p: ProductInst, turn: number): { eraDiff: number; income: number; pull: number } {
+  const launchEra = eraOf(p.launchedTurn ?? 0).id;
+  const eraDiff = Math.max(0, eraOf(turn).id - launchEra);
+  return { eraDiff, income: Math.pow(0.82, eraDiff), pull: Math.pow(0.7, eraDiff) };
+}
+/** 品牌溢价：声望带来收入加成 */
+export const brandMult = (fame: number) => 1 + fame / 500;
+
 /** 对手估值行情：按回合线性插值（单位：百万元） */
 export function rivalVal(curve: { pts: [number, number][] }, turn: number): number {
   const pts = curve.pts;
@@ -96,11 +109,14 @@ export function rivalVal(curve: { pts: [number, number][] }, turn: number): numb
 }
 
 export function valuation(s: GameState): number {
+  /* 已上市：以市值为准 */
+  if (s.ipo) return Math.round(s.ipo.cap);
   /* 估值 = 现金 + 用户资产 + 品牌 + 技术 + 产品组合 + 机房 + 时代红利 + 营收倍数(P/S) + 投资布局 */
   let v = s.funds * 0.6; // 现金也计入
   v += s.users * 1.2 + s.fame * 1.5 + s.techPts * 2;
   v += s.researched.length * 12;
   for (const p of s.products) {
+    if (p.shut) continue;
     const d = productDef(p.def);
     v += p.launched
       ? d.devCost * 0.5 + d.base * 2 + ((p.level || 1) - 1) * 8 + (p.heat || 0) * 0.1
@@ -124,7 +140,8 @@ export function productIncome(s: GameState, p: ProductInst): number {
   const diff = diffOf(s);
   const mult = eraOf(s.turn).mult;
   const pm = priceMode(p);
-  let inc = (d.base + s.users * d.ucoef) * mult * diff.revMult * levelMult(p) * pm.incomeMult * heatIncomeMult(p);
+  let inc = (d.base + s.users * d.ucoef) * mult * diff.revMult * levelMult(p) * pm.incomeMult * heatIncomeMult(p)
+    * shockMult(s) * agingOf(p, s.turn).income * brandMult(s.fame);
   if (has(s, 'p_free')) inc *= 0.9;
   if (adv(s, 'mayun')) inc *= 1.1;
   if (has(s, 'p_sp2') && (p.def === 'p_sp' || p.def === 'p_game')) inc *= 1.35;
@@ -136,8 +153,10 @@ export function productIncome(s: GameState, p: ProductInst): number {
   return inc;
 }
 
+/** 仍在运营的产品（已上线且未停运） */
+export const active = (s: GameState) => s.products.filter((p) => p.launched && !p.shut);
 function upkeepSum(s: GameState) {
-  return s.products.filter((p) => p.launched).reduce((a, p) => a + productDef(p.def).upkeep, 0);
+  return active(s).reduce((a, p) => a + productDef(p.def).upkeep, 0);
 }
 
 function salaryCost(s: GameState) {
@@ -148,8 +167,8 @@ function salaryCost(s: GameState) {
 }
 
 export function quarterReport(s: GameState) {
-  const launched = s.products.filter((p) => p.launched);
-  const rows = launched.map((p) => ({ name: productDef(p.def).name, level: p.level, val: productIncome(s, p) }));
+  const launched = active(s);
+  const rows = launched.map((p) => ({ name: productDef(p.def).name, level: p.level, val: productIncome(s, p), aging: agingOf(p, s.turn).eraDiff }));
   const revenue = rows.reduce((a, r) => a + r.val, 0);
   const upkeep = upkeepSum(s);
   const salary = salaryCost(s);
@@ -157,7 +176,7 @@ export function quarterReport(s: GameState) {
 }
 
 function devSpeed(s: GameState) {
-  let sp = 1 + s.team * 0.08;
+  let sp = 1 + s.team * 0.12;
   if (adv(s, 'lei')) sp *= 1.25;
   return sp;
 }
@@ -166,15 +185,14 @@ function effWork(s: GameState, d: ProductDef) {
 }
 
 export function researchSpeed(s: GameState) {
-  let sp = 1 + (has(s, 'p_tech') ? 1 : 0);
+  let sp = 1 + (has(s, 'p_tech') ? 1 : 0) + s.team * 0.02;
   if (adv(s, 'robin')) sp *= 1.3;
   return sp;
 }
 
 export function organicGrowth(s: GameState) {
-  const pull = s.products
-    .filter((p) => p.launched)
-    .reduce((a, p) => a + productDef(p.def).pull * priceMode(p).pullMult * heatPullMult(p), 0);
+  const pull = active(s)
+    .reduce((a, p) => a + productDef(p.def).pull * priceMode(p).pullMult * heatPullMult(p) * agingOf(p, s.turn).pull, 0);
   let g = (0.15 + s.fame * 0.04 + pull * 0.6) * Math.pow(eraOf(s.turn).mult, 0.8) * diffOf(s).growthMult;
   if (has(s, 'p_user')) g *= 1.4;
   if (has(s, 'p_free')) g *= 1.25;
@@ -203,7 +221,7 @@ export function newGame(name: string, trackId: string, difficultyId: string = 'n
     phase: 'play', turn: 0, name: name || '未命名网络公司', track: trackId,
     difficulty: diff.id, perk,
     funds, users: tr.users, fame: tr.fame, team: 3, ap: 3, apMax: 3, debt: 0,
-    loanTurns: 0, servers: 0, deferred: [],
+    loanTurns: 0, servers: 0, deferred: [], shocks: [], ipo: null,
     policies: [], researched: ['t_bbs'], cur: null, prog: {}, techPts: diff.techPts, equity: 100,
     products: [], rel: {}, met: [], advisors: [], flags: {}, log: [], queue: [],
     toasts: [], history: [], eraBanner: null, outcome: null, seq: 100,
@@ -237,8 +255,8 @@ function applyFx(s: GameState, fx: Choice['fx']): GameState {
   if (fx.team) n.team = Math.max(1, n.team + fx.team);
   if (fx.tech) {
     const [tid, amt] = fx.tech;
-    if (tid) n.prog[tid] = (n.prog[tid] || 0) + amt;
-    else n.techPts += amt;
+    if (tid) n.prog[tid] = Math.max(0, (n.prog[tid] || 0) + amt);
+    else n.techPts = Math.max(0, n.techPts + amt);
   }
   if (fx.rel) for (const [pid, d] of fx.rel) n.rel[pid] = (n.rel[pid] || 0) + d;
   if (fx.flags) for (const f of fx.flags) n.flags[f] = true;
@@ -317,6 +335,11 @@ function endTurn(prev: GameState): GameState {
     }
   }
 
+  /* 1.6 行业冲击波倒计时 */
+  s.shocks = s.shocks
+    .map((sh) => ({ ...sh, left: sh.left - 1 }))
+    .filter((sh) => sh.left > 0);
+
   /* 2. 研发自动推进 + 存量技术点 */
   if (s.cur) {
     s.prog[s.cur] = (s.prog[s.cur] || 0) + researchSpeed(s) + s.techPts;
@@ -342,8 +365,45 @@ function endTurn(prev: GameState): GameState {
 
   /* 4. 用户与声望 */
   s.users = +(s.users + organicGrowth(s)).toFixed(1);
-  const fameGain = s.products.filter((p) => p.launched).reduce((a, p) => a + productDef(p.def).fame, 0);
+  const fameGain = active(s).reduce((a, p) => a + productDef(p.def).fame, 0);
   s.fame = clamp(+(s.fame + fameGain * (adv(s, 'zhang') ? 1.3 : 1) - 0.3).toFixed(1), 0, 100);
+
+  /* 4.2 上市季度：合规成本 + 市值波动 + 财报压力 */
+  if (s.ipo) {
+    s.funds = +(s.funds - 2.5).toFixed(1); // 合规 / 审计 / 信披成本
+    const netNow = quarterReport(s).net;
+    const drift = clamp(netNow / 150, -0.15, 0.25) + (Math.random() - 0.45) * 0.15;
+    const newCap = Math.max(50, Math.round(s.ipo.cap * (1 + drift)));
+    const up = newCap >= s.ipo.cap;
+    s.ipo = { ...s.ipo, cap: newCap };
+    s = mkLog(s, up ? 'gain' : 'warn', `上市后季报：本季度${netNow >= 0 ? '盈利' : '亏损'}，市值${up ? '上涨' : '回撤'}至 ${fmtVal(newCap)}（合规成本 −2.5 万）。`);
+    if (netNow < 0) s.fame = clamp(s.fame - 1, 0, 100); // 财报压力
+  }
+
+  /* 4.3 先驱者里程碑：抢在历史事件之前做出同类产品 */
+  for (const m of MILESTONES) {
+    if (s.flags[m.flag]) continue;
+    const p = s.products.find((x) => x.def === m.product && x.launched && !x.shut);
+    if (p && (p.launchedTurn ?? 99) < m.beforeTurn) {
+      s.flags = { ...s.flags, [m.flag]: true };
+      s.fame = clamp(s.fame + m.fame, 0, 100);
+      s = mkLog(s, 'gain', `【先驱者】${m.text}（声望 +${m.fame}）`);
+      s = toast(s, '先驱者里程碑达成！', 'ach');
+    }
+  }
+
+  /* 4.4 用户里程碑 */
+  const um = [
+    { flag: 'u10', at: 10, fame: 2 }, { flag: 'u100', at: 100, fame: 3 },
+    { flag: 'u1000', at: 1000, fame: 4 }, { flag: 'u5000', at: 5000, fame: 5 },
+  ];
+  for (const u of um) {
+    if (!s.flags[u.flag] && s.users >= u.at) {
+      s.flags = { ...s.flags, [u.flag]: true };
+      s.fame = clamp(s.fame + u.fame, 0, 100);
+      s = toast(s, `用户突破 ${u.at} 万！声望 +${u.fame}`, 'good');
+    }
+  }
 
   /* 4.5 过桥贷款还款 */
   if (s.loanTurns > 0) {
@@ -421,9 +481,19 @@ function endTurn(prev: GameState): GameState {
   }
   s.deferred = deferred;
 
+  /* 特别事件（董事会博弈 / 上市股价波动）：独立判定，保证关键剧情触发 */
+  if (Math.random() < 0.22) {
+    const specials = RANDOMS.filter((r) => r.kind === 'special' && !s.flags[`used_${r.id}`] && (!r.cond || r.cond(s)));
+    if (specials.length) {
+      const pick = specials[Math.floor(Math.random() * specials.length)];
+      s.flags[`used_${pick.id}`] = true;
+      queue.push(pick.id);
+    }
+  }
+
   /* 随机事件（事件密集的季度降低概率） */
   if (Math.random() < (queue.length === payouts.length ? 0.42 : 0.15)) {
-    const pool = RANDOMS.filter((r) => !s.flags[`used_${r.id}`] && (!r.cond || r.cond(s)));
+    const pool = RANDOMS.filter((r) => r.kind !== 'special' && !s.flags[`used_${r.id}`] && (!r.cond || r.cond(s)));
     if (pool.length) {
       const pick = pool[Math.floor(Math.random() * pool.length)];
       s.flags[`used_${pick.id}`] = true;
@@ -484,6 +554,8 @@ export function reducer(s: GameState, a: Action): GameState {
         loanTurns: st.loanTurns ?? 0,
         servers: st.servers ?? 0,
         deferred: st.deferred ?? [],
+        shocks: (st.shocks ?? []).filter((sh) => sh.left > 0),
+        ipo: st.ipo ?? null,
         techPts: st.techPts ?? 0,
         cur: st.cur ?? null,
         products: (st.products ?? []).map((p) => ({
@@ -530,6 +602,21 @@ export function reducer(s: GameState, a: Action): GameState {
       n = applyFx(n, fx);
       if (gainF > 0) n = { ...n, funds: +(n.funds + gainF).toFixed(1) };
       if (ev.person) n = grantMet(n, ev.person);
+      /* 行业冲击波：重大事件对全行业的临时影响 */
+      if (ev.impact) {
+        if (ev.impact.incomeMult && ev.impact.turns) {
+          n = { ...n, shocks: [...n.shocks.filter((sh) => sh.label !== ev.impact!.label), { label: ev.impact.label, mult: ev.impact.incomeMult, left: ev.impact.turns }] };
+          n = mkLog(n, 'history', `【行业冲击】${ev.title}引发「${ev.impact.label}」：全行业收入 ×${ev.impact.incomeMult}，持续 ${ev.impact.turns} 个季度。`);
+        }
+        if (ev.impact.users) n.users = Math.max(0, +(n.users + ev.impact.users).toFixed(1));
+        if (ev.impact.fame) n.fame = clamp(+(n.fame + ev.impact.fame).toFixed(1), 0, 100);
+        if (ev.impact.tech && n.cur) n.prog = { ...n.prog, [n.cur]: (n.prog[n.cur] || 0) + (ev.impact.tech[1] ?? 0) };
+      }
+      /* 先驱变体：玩家抢先做出相关产品时的额外承认 */
+      if (ev.variant && ev.variant.when(n)) {
+        if (ev.variant.bonus) n = applyFx(n, ev.variant.bonus);
+        if (ev.variant.note) n = mkLog(n, 'gain', `【业界瞩目】${ev.variant.note}`);
+      }
       n = { ...n, queue: n.queue.slice(1) };
       n = checkAch(n);
       if (choice.fx.end === 'exit') {
@@ -706,6 +793,51 @@ export function reducer(s: GameState, a: Action): GameState {
       }
       if (newHeat >= 80 && (p.heat || 0) < 80) n = toast(n, `「${d.name}」成为爆款！`, 'good');
       return n;
+    }
+
+    /* 解聘战略顾问 */
+    case 'DISMISS_ADVISOR': {
+      if (!s.advisors.includes(a.person)) return s;
+      const p = personDef(a.person);
+      let n: GameState = { ...s, advisors: s.advisors.filter((x) => x !== a.person), rel: { ...s.rel, [a.person]: Math.max(0, (s.rel[a.person] || 0) - 1) } };
+      n = mkLog(n, 'person', `与 ${p.name} 结束顾问合作（「${p.buffName}」加成消失）。好聚好散，江湖再见。`);
+      return n;
+    }
+
+    /* 产品停运 */
+    case 'SHUT_PRODUCT': {
+      const p = s.products.find((x) => x.uid === a.uid);
+      if (!p || !p.launched || p.shut) return s;
+      const d = productDef(p.def);
+      let n: GameState = {
+        ...s,
+        products: s.products.map((x) => (x.uid === a.uid ? { ...x, shut: true, heat: 0 } : x)),
+        users: +(s.users * 0.92).toFixed(1),
+      };
+      n.fame = clamp(+(n.fame - 1.5).toFixed(1), 0, 100);
+      n = mkLog(n, 'warn', `产品「${d.name}」正式停运：停止维护与收费，约 8% 用户流失，声望 −1.5。轻装上阵，把资源留给下一代产品。`);
+      return toast(n, `${d.name} 已停运`, 'info');
+    }
+
+    /* 上市 IPO */
+    case 'IPO': {
+      if (s.phase !== 'play' || s.ipo || s.ap < 2 || s.queue.length > 0) return s;
+      const val = valuation(s);
+      if (eraOf(s.turn).id < 2 || val < 300 || active(s).length < 3 || s.fame < 25 || s.funds < 15) return s;
+      const appetite = 0.75 + s.fame / 200 + (quarterReport(s).net > 0 ? 0.15 : 0);
+      const cap = Math.round(val * 1.1);
+      const proceeds = Math.round(cap * 0.25 * appetite);
+      const price = Math.max(1, Math.round(cap / 40));
+      let n: GameState = {
+        ...s,
+        ap: s.ap - 2,
+        funds: +(s.funds - 15 + proceeds).toFixed(1),
+        equity: Math.max(5, s.equity - 25),
+        ipo: { turn: s.turn, float: 25, cap, price },
+      };
+      n = mkLog(n, 'gain', `🔔 敲钟时刻！${n.name} 正式挂牌上市，发行价 ${price} 元/股，募资 ${proceeds} 万（承销费 15 万），公众持股 25%。上市首日市值 ${fmtVal(cap)}。`);
+      n = mkLog(n, 'warn', '【上市阵痛】从此每季固定支出 2.5 万合规/审计/信披成本；业绩不达标会被资本市场用脚投票，市值随财报剧烈波动。');
+      return toast(n, `上市成功！募资 ${proceeds} 万`, 'ach');
     }
 
     /* 融资确认到账 */

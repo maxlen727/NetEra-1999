@@ -136,6 +136,26 @@ export const ERA_THEMES: { id: number; label: string; bg: string; vars: Record<s
   },
 ];
 
+/* ================= 先驱者里程碑 =================
+   若玩家在某个历史事件发生前就做出同类产品，会被写入史册并获得声望奖励。
+   product: 玩家需已上线的产品；beforeTurn: 须在该回合前上线。 */
+export const MILESTONES: { flag: string; product: string; beforeTurn: number; fame: number; text: string }[] = [
+  { flag: 'ms_im', product: 'p_im', beforeTurn: 1, fame: 6, text: '先驱者：你的即时通讯产品比 OICQ 还早！业界称你为「中国 IM 第一人」。' },
+  { flag: 'ms_ec', product: 'p_ec', beforeTurn: 17, fame: 7, text: '先驱者：在淘宝网诞生之前，你已经把电商交易平台做起来了，媒体称你为「电商拓荒者」。' },
+  { flag: 'ms_pay', product: 'p_mpay', beforeTurn: 23, fame: 8, text: '先驱者：你比支付宝早三年做出移动支付/在线支付，行业媒体惊呼「第三方支付的先行者竟是你」。' },
+  { flag: 'ms_search', product: 'p_search', beforeTurn: 26, fame: 6, text: '先驱者：百度上市前你已做出搜索引擎，资本市场称你为「被低估的搜索玩家」。' },
+  { flag: 'ms_client', product: 'p_client', beforeTurn: 32, fame: 7, text: '先驱者：iPhone 发布之前你已布局手机客户端，媒体称你「提前五年看到移动互联网」。' },
+];
+
+/* ================= 创始人股权状态 ================= */
+export function equityStatus(eq: number): { label: string; desc: string; tone: 'good' | 'warn' | 'bad' } {
+  if (eq >= 67) return { label: '绝对控股', desc: '持股≥67%，你拥有绝对控制权，任何决议都无法绕过你。', tone: 'good' };
+  if (eq >= 51) return { label: '相对控股', desc: '持股≥51%，重大决策仍由你拍板，但要开始留意董事会。', tone: 'good' };
+  if (eq >= 34) return { label: '一票否决', desc: '持股≥34%，你保有一票否决权，但融资时话语权已明显下降。', tone: 'warn' };
+  if (eq >= 20) return { label: '重要股东', desc: '持股<34%，你失去了否决权，董事会随时可能干预公司方向。', tone: 'warn' };
+  return { label: '职业经理人', desc: '持股<20%，公司更多属于资本而非你，控制权岌岌可危。', tone: 'bad' };
+}
+
 export const TECHS: TechDef[] = [
   { id: 't_bbs', name: 'BBS 建站', era: 0, cost: 3, desc: '论坛是中文互联网的第一声啼哭。', unlocks: 'p_bbs' },
   { id: 't_portal', name: '门户架构', era: 0, cost: 5, req: ['t_bbs'], desc: '新闻+邮箱+搜索框，一个首页包打天下。', unlocks: 'p_portal' },
@@ -216,6 +236,12 @@ export const EVENTS: GameEvent[] = [
   {
     id: 'ev_oicq', turn: 1, kind: 'person', person: 'pony',
     title: '一只胖企鹅诞生了',
+    impact: { label: '即时通讯风潮', incomeMult: 1.12, turns: 3, users: 1 },
+    variant: {
+      when: (s) => s.products.some((p) => p.def === 'p_im' && p.launched && !p.shut),
+      note: '业界注意到：你的 IM 产品与 OICQ 正面交锋，媒体开始讨论「谁才是中国 IM 之王」。',
+      bonus: { fame: 3 },
+    },
     body: '深圳赛格科技园，一个叫马化腾的年轻人把 OICQ 挂上了网。没人知道这个「网络寻呼机」会掀起多大的浪——据说他正为服务器费用发愁，四处找人聊天。你在华强北的电子市场偶遇了他。',
     footnote: '史实：1999 年 2 月 10 日，OICQ（QQ 前身）上线，五个月内注册用户突破百万。',
     choices: [
@@ -271,6 +297,7 @@ export const EVENTS: GameEvent[] = [
   {
     id: 'ev_crash', turn: 5, kind: 'history',
     title: '纳斯达克崩盘 · 互联网寒冬',
+    impact: { label: '资本寒冬', incomeMult: 0.8, turns: 4, fame: -1 },
     body: '2000 年 4 月 14 日，纳斯达克单日暴跌 355 点，.com 泡沫破了。新浪上市一个月股价腰斩，搜狐跌到 1 美元徘徊在退市边缘，网易上市即破发。投资人的电话再也打不通，账上的钱每个月都在变少。董事会问你：怎么过冬？',
     footnote: '史实：2000 年 4 月纳斯达克崩盘，全球互联网进入长达两年的寒冬；大量 .com 公司倒闭。',
     choices: [
@@ -304,6 +331,7 @@ export const EVENTS: GameEvent[] = [
   {
     id: 'ev_wy', turn: 10, kind: 'person', person: 'dinglei',
     title: '网易停牌危机',
+    impact: { label: 'SP 淘金信号', incomeMult: 1.15, turns: 4 },
     body: '2001 年 7 月，网易因财报问题被纳斯达克停牌，股价跌到 0.6 美元。丁磊一度想把网易卖掉，却没人敢接。这个 30 岁的宁波人顶着黑眼圈对你说：「所有人都说我完了。但我觉得，互联网这才刚开始。」',
     footnote: '史实：2001 年 7 月网易被停牌；靠短信 SP 业务翻身，2003 年股价上涨近 50 倍，丁磊成为中国首富。',
     choices: [
@@ -315,6 +343,7 @@ export const EVENTS: GameEvent[] = [
   {
     id: 'ev_cq', turn: 11, kind: 'person', person: 'chen',
     title: '《传奇》燎原',
+    impact: { label: '网游市场爆发', incomeMult: 1.2, turns: 4 },
     body: '2001 年 9 月，陈天桥押上全部身家——30 万美元代理费——签下韩国网游《传奇》。两个月后，全国网吧的屏幕一半都是沙巴克攻城战。点卡卖到断货，盛大的服务器每天进账以百万计。陈天桥请你在上海金茂喝咖啡：「跟着干，一起分蛋糕？」',
     footnote: '史实：2001 年 9 月盛大运营《传奇》，次年即占中国网游市场 60%；2004 年陈天桥以 88 亿身家成为最年轻首富。',
     choices: [
@@ -326,6 +355,7 @@ export const EVENTS: GameEvent[] = [
   {
     id: 'ev_lanjisu', turn: 13, kind: 'history',
     title: '蓝极速的烈火',
+    impact: { label: '网吧整顿', incomeMult: 0.85, turns: 3 },
     body: '2002 年 6 月 16 日凌晨，北京海淀「蓝极速」网吧燃起大火，25 个年轻生命定格在那个夜晚。全国网吧开始停业整顿，你的用户里有三成来自网吧。痛定思痛，整个行业被迫回答一个问题：互联网该往哪里去？',
     footnote: '史实：2002 年蓝极速网吧纵火案直接催生全国网吧行业大整顿，家庭宽带接入自此加速。',
     choices: [
@@ -346,6 +376,12 @@ export const EVENTS: GameEvent[] = [
   {
     id: 'ev_sars', turn: 17, kind: 'history',
     title: '非典 · 与淘宝的诞生',
+    impact: { label: '线上需求井喷', incomeMult: 1.25, turns: 4, users: 3 },
+    variant: {
+      when: (s) => s.products.some((p) => p.def === 'p_ec' && p.launched && !p.shut),
+      note: '你的电商平台订单暴增，非典让你的平台一夜之间被全国网民知道——你和马云站在了同一条起跑线上。',
+      bonus: { fame: 4, users: 2 },
+    },
     body: '2003 年春天，非典席卷全国。人们闭门不出，拨号上网的提示音成了最熟悉的声音——QQ 同时在线冲破 300 万，电商订单暴增。而在杭州湖畔花园，马云的七人小组被隔离在家，正秘密开发一个叫「淘宝」的网站。危机，永远是勇敢者的入场券。',
     footnote: '史实：2003 年 5 月淘宝网上线；非典客观上成为中国电商与即时通讯的超级催化剂。',
     choices: [
@@ -376,6 +412,7 @@ export const EVENTS: GameEvent[] = [
   {
     id: 'ev_sp_crack', turn: 21, kind: 'history',
     title: 'SP 大整顿',
+    impact: { label: 'SP 整顿', incomeMult: 0.85, turns: 4 },
     body: '2004 年，运营商启动 SP 业务大检查：乱扣费、陷阱订阅被点名清退，大批 SP 公司一夜归零。短信淘金热的野蛮时代，到头了。你的移动增值业务怎么办？',
     footnote: '史实：2004 年 5 月起中国移动开展 SP 治理，上千家 SP 被处罚，行业收入断崖下跌。',
     cond: (s) => s.products.some((p) => p.def === 'p_sp'),
@@ -401,6 +438,24 @@ export const EVENTS: GameEvent[] = [
     choices: [{ label: '笑纳（资金 +60）', fx: { funds: 60, flags: ['payoff_joyo'], log: '卓越网股权变现 60 万。' } }],
   },
   {
+    id: 'ev_alipay', turn: 23, kind: 'person', person: 'mayun',
+    title: '支付宝：担保交易破局',
+    impact: { label: '电商基建爆发', incomeMult: 1.15, turns: 4 },
+    variant: {
+      when: (s) =>
+        s.products.some((p) => (p.def === 'p_mpay') && p.launched && !p.shut) || s.researched.includes('t_pay'),
+      note: '有意思的是：你比支付宝更早布局了在线支付/移动支付。马云在发布会上被记者问及你时大方承认：「这条路，是先行者趟出来的。」',
+      bonus: { fame: 5, users: 3 },
+    },
+    body: '2004 年 12 月，马云力推「支付宝」独立运营，用「担保交易」解决了电商最大的信任死结——买家怕付了钱收不到货，卖家怕发了货收不到钱。这个最初只是淘宝一个功能的小团队，即将长成金融巨兽。支付，成为电商的任督二脉。',
+    footnote: '史实：2004 年 12 月支付宝从淘宝分拆独立，担保交易模式奠定中国电商信任基础。',
+    choices: [
+      { label: '研究支付与电商的结合', hint: '在线支付研发 +3', fx: { tech: ['t_pay', 3], rel: [['mayun', 1]] } },
+      { label: '与支付宝谈接口合作', hint: '马云好感 +2 · 用户 +2', fx: { rel: [['mayun', 2]], users: 2 } },
+      { label: '「支付是银行的生意，不碰」', hint: '声望 +1', fx: { fame: 1 } },
+    ],
+  },
+  {
     id: 'ev_sd_sina', turn: 24, kind: 'history',
     title: '盛大突袭新浪',
     body: '2005 年 2 月 19 日，陈天桥在二级市场 stealth 扫货，盛大宣布持有新浪 19.9% 股份，震动整个互联网。门户之王被人从背后捅了一刀，「收购与被收购」成了行业新主题。你的公司，要不要也学着资本运作？',
@@ -413,6 +468,11 @@ export const EVENTS: GameEvent[] = [
   {
     id: 'ev_aug2005', turn: 26, kind: 'history',
     title: '2005 年 8 月 · 百度的疯狂',
+    variant: {
+      when: (s) => s.products.some((p) => p.def === 'p_search' && p.launched && !p.shut),
+      note: '你的搜索引擎与百度同场竞技，百度的暴涨让整个搜索赛道被资本重新定价——你的产品也跟着水涨船高。',
+      bonus: { fame: 3 },
+    },
     body: '这个 8 月信息量大得吓人：雅虎掏出 10 亿美元收购周鸿祎的 3721；8 月 5 日百度登陆纳斯达克，发行价 27 美元，收盘 122.54 美元——首日暴涨 354%，创美国股市 213 年来海外 IPO 首日涨幅纪录。华尔街第一次记住了「Chinese Internet」。',
     footnote: '史实：2005 年 8 月雅虎 10 亿美元收购雅虎中国（含 3721）；同月百度上市首日涨 354%。',
     choices: [
@@ -441,6 +501,7 @@ export const EVENTS: GameEvent[] = [
   {
     id: 'ev_iphone', turn: 32, kind: 'history',
     title: 'iPhone 时刻',
+    impact: { label: '移动互联网前夜', incomeMult: 1.15, turns: 4 },
     body: '2007 年 1 月 9 日，乔布斯穿着黑色高领衫走上旧金山的台：「今天，苹果重新发明了手机。」没有键盘，一块玻璃，手指划过之处，世界变了。中关村的水货柜台前排起长队，嗅觉灵敏的人已经意识到：互联网的入口，正在从书桌移到掌心。',
     footnote: '史实：2007 年 1 月 9 日初代 iPhone 发布；2008 年 App Store 上线，开启移动应用大爆炸。',
     choices: [
@@ -470,6 +531,7 @@ export const EVENTS: GameEvent[] = [
   {
     id: 'ev_crisis', turn: 39, kind: 'history',
     title: '全球金融危机',
+    impact: { label: '金融海啸', incomeMult: 0.8, turns: 5, fame: -1 },
     body: '雷曼兄弟倒了，全球股市绿得发黑（美股是绿的，但你的心是灰的）。VC 们集体消失，无数创业公司的融资协议一夜作废。2008 年冬天，马云那句「跪着过冬」在圈子里疯传。你的董事会再次把问题抛给你：怎么过这个冬天？',
     footnote: '史实：2008 年 9 月雷曼破产引发全球金融危机，中国互联网公司股价普遍腰斩。',
     choices: [
@@ -481,6 +543,7 @@ export const EVENTS: GameEvent[] = [
   {
     id: 'ev_3g', turn: 40, kind: 'history',
     title: '3G 牌照发放',
+    impact: { label: '3G 时代', incomeMult: 1.18, turns: 5, users: 2 },
     body: '2009 年 1 月 7 日，工信部发出三张 3G 牌照，中国移动、联通、电信三大运营商同台竞技。「上网本」「3G 手机」的广告铺满地铁通道，网速从 KB 跳到 MB——移动互联网的大门，真的开了。',
     footnote: '史实：2009 年 1 月 7 日中国发放 3G 牌照；同年 App Store 中国开发者生态开始爆发。',
     choices: [
@@ -491,6 +554,7 @@ export const EVENTS: GameEvent[] = [
   {
     id: 'ev_weibo', turn: 42, kind: 'history',
     title: '微博元年',
+    impact: { label: '微博风潮', incomeMult: 1.15, turns: 4, users: 3 },
     body: '2009 年 8 月，新浪微博内测上线，140 个字改变了中文互联网的表达方式。明星入驻、全民围观、热搜诞生——「今天你织围脖了吗」成了见面问候语。又一次，一个新的流量黑洞正在形成。',
     footnote: '史实：2009 年 8 月 14 日新浪微博上线，一年内用户突破 5000 万。',
     choices: [
@@ -537,6 +601,12 @@ export const EVENTS: GameEvent[] = [
   {
     id: 'ev_3q', turn: 47, kind: 'history',
     title: '3Q 大战 · 你的站队',
+    impact: { label: '行业大洗牌', incomeMult: 1.1, turns: 2, users: 4, fame: 2 },
+    variant: {
+      when: (s) => s.products.some((p) => p.def === 'p_im' && p.launched && !p.shut),
+      note: '作为 IM 厂商，你被卷入这场大战的舆论漩涡——大量不满 3Q 二选一的用户涌向你的产品。',
+      bonus: { users: 3, fame: 2 },
+    },
     body: '2010 年 11 月 3 日晚，腾讯发布公开信：装有 360 的电脑将停止运行 QQ。全国网民被迫在两个图标之间做选择，史称「一个艰难的决定」。工信部连夜约谈，央视轮番报道。作为中国互联网的一员，全网都在问：你站谁？这是你在这个时代的最后一个回合。',
     footnote: '史实：2010 年 11 月 3Q 大战爆发，直接推动中国互联网走向开放与平台化；2014 年最高法判腾讯胜诉。',
     choices: [
@@ -628,6 +698,75 @@ export const RANDOMS: GameEvent[] = [
     choices: [
       { label: '掏钱赎回', hint: '资金 −2 · 声望 +1', cost: 2, fx: { funds: -2, fame: 1 } },
       { label: '换个域名，硬刚到底', hint: '用户 −1 · 声望 +1', fx: { users: -1, fame: 1 } },
+    ],
+  },
+  {
+    id: 'r_board', turn: -1, kind: 'special', title: '董事会摊牌',
+    cond: (s) => s.equity < 50 && !s.ipo,
+    body: '你的持股已经低于 50%，几位投资人股东在董事会发难：「公司烧钱太快，必须换 CFO、砍业务线。」会议室里剑拔弩张，这是控制权之战的前哨。',
+    choices: [
+      { label: '增发股份安抚股东', hint: '股权 −8 · 资金 +30', fx: { funds: 30, flags: ['dilute_more'], log: '你增发 8% 股份换取 30 万，暂时稳住了董事会。' } },
+      { label: '自掏腰包回购股份', hint: '资金 −15 · 股权 +5 · 声望 +1', cost: 15, fx: { funds: -15, flags: ['buyback'], fame: 1, log: '你拿出 15 万回购股份，持股回升，腰杆硬了。' } },
+      { label: '强硬对抗', hint: '声望 +2 · 随机冲击', fx: { fame: 2, flags: ['board_fight'], log: '你在董事会上拍了桌子。股东们记下了这一笔。' } },
+    ],
+  },
+  {
+    id: 'r_subsidy', turn: -1, kind: 'random', title: '政府信息化专项补贴',
+    cond: (s) => s.fame >= 20,
+    body: '市里搞「企业上网工程」，你的公司因为有名气，被推荐申报信息化专项补贴。材料要跑三趟，但钱是实打实的。',
+    choices: [
+      { label: '申报补贴', hint: '资金 +8 · 声望 +1', fx: { funds: 8, fame: 1 } },
+      { label: '嫌麻烦不报', fx: { log: '你懒得跑流程，把机会让给了同行。' } },
+    ],
+  },
+  {
+    id: 'r_talent', turn: -1, kind: 'random', title: '竞争对手挖角',
+    cond: (s) => s.team >= 5,
+    body: '一家财大气粗的同行开出双倍工资挖你的技术骨干，还附带解决户口。HR 拿着辞职信在门口等你定夺。',
+    choices: [
+      { label: '加薪 + 期权留人', hint: '资金 −6 · 研发 +2', cost: 6, fx: { funds: -6, tech: [null, 2] } },
+      { label: '放手让他走', hint: '团队 −1 · 研发 −2', fx: { team: -1, tech: [null, -2] } },
+    ],
+  },
+  {
+    id: 'r_pricewar', turn: -1, kind: 'random', title: '行业价格战',
+    cond: (s) => s.products.filter((p) => p.launched && !p.shut).length >= 2,
+    body: '同行发起疯狂价格战，你的客户天天拿着对手的报价单来压价。跟，伤利润；不跟，丢市场。',
+    choices: [
+      { label: '跟进降价保份额', hint: '资金 −8 · 用户 +3', cost: 8, fx: { funds: -8, users: 3 } },
+      { label: '坚持品质不打折', hint: '用户 −2 · 声望 +2', fx: { users: -2, fame: 2 } },
+    ],
+  },
+  {
+    id: 'r_opensource', turn: -1, kind: 'random', title: '开源社区的馈赠',
+    body: '你的工程师在开源社区发现了几个宝藏项目，用它们重构后，服务器成本直接砍半。开源，是这个时代最浪漫的礼物。',
+    choices: [
+      { label: '拥抱开源', hint: '研发 +2 · 资金 +3', fx: { tech: [null, 2], funds: 3 } },
+    ],
+  },
+  {
+    id: 'r_stockcrash', turn: -1, kind: 'special', title: '股价惊魂一日',
+    cond: (s) => !!s.ipo,
+    body: '一份做空报告突袭你的公司，股价单日跳水。交易员电话被打爆，董秘问你要不要发澄清公告。',
+    choices: [
+      { label: '火速澄清 + 回购', hint: '资金 −10 · 稳住市值', cost: 10, fx: { funds: -10, flags: ['stock_defend'], fame: 2, log: '你连夜发布澄清公告并启动回购，股价止住了跌势。' } },
+      { label: '冷处理', hint: '市值受挫 · 声望 −1', fx: { fame: -1, flags: ['stock_ignore'], log: '你选择沉默，股价在流言中继续下探。' } },
+    ],
+  },
+  {
+    id: 'r_analyst', turn: -1, kind: 'special', title: '分析师集体唱多',
+    cond: (s) => !!s.ipo,
+    body: '多家券商分析师发布研报，一致上调你的目标价，称你是「最被低估的中国互联网资产」。机构资金闻风而动。',
+    choices: [
+      { label: '顺势路演', hint: '市值大涨 · 声望 +2', fx: { fame: 2, flags: ['analyst_bull'], log: '你趁热打铁全球路演，市值一路走高。' } },
+    ],
+  },
+  {
+    id: 'r_festival', turn: -1, kind: 'random', title: '春节流量洪峰',
+    body: '春运开启，返乡人潮在网吧和家里的电脑上刷起了你的网站。除夕夜服务器负载创新高，这是甜蜜的负担。',
+    choices: [
+      { label: '全力保障', hint: '资金 −3 · 用户 +2', cost: 3, fx: { funds: -3, users: 2 } },
+      { label: '听天由命', hint: '用户 +1 · 声望 −1', fx: { users: 1, fame: -1 } },
     ],
   },
 ];

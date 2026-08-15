@@ -29,6 +29,10 @@ export interface GameEvent {
   person?: string;
   cond?: (s: GameState) => boolean;
   choices: Choice[];
+  /** 行业冲击：事件发生时作用于玩家公司的临时/即时影响 */
+  impact?: { label: string; incomeMult?: number; turns?: number; users?: number; fame?: number; tech?: [string | null, number] };
+  /** 先驱变体：若玩家已抢先做出相关产品，事件文案与奖励会承认玩家的影响 */
+  variant?: { when: (s: GameState) => boolean; body?: string; note?: string; bonus?: Effect };
 }
 
 export interface TechDef {
@@ -91,6 +95,22 @@ export interface ProductInst {
   price: PriceMode;
   /** 运营热度 0-100，每回合衰减，推广/内容运营可提升 */
   heat: number;
+  /** 已停运 */
+  shut?: boolean;
+}
+
+/** 行业冲击波：重大历史事件对全行业的临时影响 */
+export interface Shock { label: string; mult: number; left: number }
+
+/** 上市信息 */
+export interface IpoInfo {
+  turn: number;
+  /** 流通股比例 % */
+  float: number;
+  /** 当前市值（万元） */
+  cap: number;
+  /** 上市发行价（元/股，仅展示） */
+  price: number;
 }
 
 export interface LogEntry {
@@ -142,6 +162,10 @@ export interface GameState {
   servers: number;
   /** 因资金不足延后的人物事件 */
   deferred: DeferredEv[];
+  /** 行业冲击波（重大历史事件的临时影响） */
+  shocks: Shock[];
+  /** 上市信息（null = 未上市） */
+  ipo: IpoInfo | null;
   policies: string[];
   researched: string[];
   /** 当前主攻研发的技术 id */
@@ -181,6 +205,9 @@ export type Action =
   | { type: 'UPGRADE_PRODUCT'; uid: number }
   | { type: 'SET_PRICE'; uid: number; price: PriceMode }
   | { type: 'OPS'; uid: number; kind: 'ad' | 'content' }
+  | { type: 'DISMISS_ADVISOR'; person: string }
+  | { type: 'SHUT_PRODUCT'; uid: number }
+  | { type: 'IPO' }
   | { type: 'ACCEPT_RAISE'; offer: { investor: string; share: number; amount: number } }
   | { type: 'TOAST_GONE'; id: number }
   | { type: 'BANNER_GONE' }
