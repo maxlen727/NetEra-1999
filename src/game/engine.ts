@@ -81,18 +81,56 @@ export const heatIncomeMult = (p: { heat?: number }) => 1 + (p.heat || 0) / 250;
 export const heatPullMult = (p: { heat?: number }) => 1 + (p.heat || 0) / 300;
 export const opsDef = (kind: 'ad' | 'content') => OPS_ACTIONS.find((o) => o.kind === kind)!;
 
-/** 行业冲击波对收入的总倍率 */
+/** 全行业冲击波对收入的总倍率（不含产品级） */
 export function shockMult(s: GameState): number {
-  return s.shocks.reduce((a, sh) => a * sh.mult, 1);
+  return s.shocks.filter((sh) => !sh.product).reduce((a, sh) => a * sh.mult, 1);
 }
-/** 产品老化：上线时代与当前时代相差越远，收入/拉新越低 */
-export function agingOf(p: ProductInst, turn: number): { eraDiff: number; income: number; pull: number } {
+/** 产品级竞争冲击倍率（如 OICQ 挤压 IM） */
+export function productShockMult(s: GameState, def: string): number {
+  return s.shocks.filter((sh) => sh.product === def).reduce((a, sh) => a * sh.mult, 1);
+}
+/** 产品上的竞争冲击标签（UI 展示用） */
+export const productShocks = (s: GameState, def: string) => s.shocks.filter((sh) => sh.product === def);
+/**
+ * 产品老化（v3 强化）：落后时代越远，收入与 ARPU 急剧衰减，且老产品开始流失用户。
+ * 让「老产品还能躺赚」变成「老产品逐渐失血」，倒逼停运/迭代。
+ */
+export function agingOf(p: ProductInst, turn: number): { eraDiff: number; income: number; arpu: number; pull: number; churn: number } {
   const launchEra = eraOf(p.launchedTurn ?? 0).id;
   const eraDiff = Math.max(0, eraOf(turn).id - launchEra);
-  return { eraDiff, income: Math.pow(0.82, eraDiff), pull: Math.pow(0.7, eraDiff) };
+  return {
+    eraDiff,
+    income: Math.pow(0.45, eraDiff),          // 收入断崖式衰减
+    arpu: Math.pow(0.45, eraDiff),            // 用户付费意愿同步下滑
+    pull: Math.pow(0.7, eraDiff),             // 拉新能力衰减
+    churn: eraDiff >= 2 ? 0.5 * (eraDiff - 1) : 0, // 落后 2 个时代起，每季流失用户（万）
+  };
+}
+/** 单产品运维成本：老产品运维成本随时代通胀 */
+export function upkeepOf(p: ProductInst, turn: number): number {
+  const d = productDef(p.def);
+  const eraDiff = Math.max(0, eraOf(turn).id - eraOf(p.launchedTurn ?? 0).id);
+  return d.upkeep * (1 + 0.6 * eraDiff);
 }
 /** 品牌溢价：声望带来收入加成 */
 export const brandMult = (fame: number) => 1 + fame / 500;
+
+/* -------- 团队单位（随时代升级） -------- */
+const TEAM_UNITS = [
+  { mult: 1, unit: '人', hire: '招募 1 名员工' },
+  { mult: 1, unit: '人', hire: '招募 1 名员工' },
+  { mult: 5, unit: '小组', hire: '扩编 1 个小组（+5 人）' },
+  { mult: 10, unit: '事业部', hire: '新建 1 个事业部（+10 人）' },
+];
+/** 当前时代的团队单位 */
+export const teamUnitOf = (turn: number) => TEAM_UNITS[eraOf(turn).id];
+/** 团队规模文案：12 人 / 12 小组 ×5 = 60 人 */
+export function teamText(s: GameState): string {
+  const u = teamUnitOf(s.turn);
+  return u.mult === 1 ? `${s.team} 人` : `${s.team} ${u.unit} ×${u.mult} = ${s.team * u.mult} 人`;
+}
+/** 每人头薪资（随时代上升），team 存的是「单位数」 */
+const UNIT_SALARY = [0.55, 0.6, 2.6, 4.5];
 
 /* -------- 处境评估辅助（供事件 assess 使用） -------- */
 /** 是否拥有并运营某产品 */
@@ -122,27 +160,29 @@ export function rivalVal(curve: { pts: [number, number][] }, turn: number): numb
 export function valuation(s: GameState): number {
   /* 已上市：以市值为准 */
   if (s.ipo) return Math.round(s.ipo.cap);
-  /* 估值 = 现金 + 用户资产 + 品牌 + 技术 + 产品组合 + 机房 + 时代红利 + 营收倍数(P/S) + 投资布局 */
-  let v = s.funds * 0.6; // 现金也计入
-  v += s.users * 1.2 + s.fame * 1.5 + s.techPts * 2;
-  v += s.researched.length * 12;
+  /* 估值 v3：用平方根缩放用户与营收，压制后期数值膨胀。
+     现金、技术、机房线性计；用户/营收边际递减。 */
+  let v = Math.min(s.funds, 800) * 0.5; // 现金（封顶，避免囤钱刷估值）
+  v += Math.sqrt(Math.max(0, s.users)) * 16; // 用户资产（边际递减）
+  v += s.fame * 4 + s.techPts * 1.5;
+  v += s.researched.length * 10;
   for (const p of s.products) {
     if (p.shut) continue;
     const d = productDef(p.def);
     v += p.launched
-      ? d.devCost * 0.5 + d.base * 2 + ((p.level || 1) - 1) * 8 + (p.heat || 0) * 0.1
-      : d.devCost * 0.3;
+      ? d.devCost * 0.4 + d.base * 1.5 + ((p.level || 1) - 1) * 6 + (p.heat || 0) * 0.05
+      : d.devCost * 0.25;
   }
-  v += s.servers * 25; // 机房资产
-  v += eraOf(s.turn).id * 40; // 时代红利
-  /* 营收倍数：季度营收 × 5 ≈ 1.25 年 P/S，生意越好估值越高 */
-  v += quarterReport(s).revenue * 5;
+  v += s.servers * 15; // 机房资产
+  v += eraOf(s.turn).id * 30; // 时代红利
+  /* 营收贡献：平方根缩放，避免后期营收线性堆爆估值 */
+  v += Math.sqrt(Math.max(0, quarterReport(s).revenue)) * 14;
   const pays = Object.keys(s.flags).filter((f) => f.startsWith('payoff_')).length;
   const invs = Object.keys(s.flags).filter((f) => f.startsWith('inv_')).length;
-  v += pays * 40 + Math.max(0, invs - pays) * 15;
-  if (has(s, 'p_cap')) v *= 1.25;
-  if (adv(s, 'xiong')) v *= 1.1;
-  if (adv(s, 'wang')) v *= 1.15;
+  v += pays * 30 + Math.max(0, invs - pays) * 12;
+  if (has(s, 'p_cap')) v *= 1.15;
+  if (adv(s, 'xiong')) v *= 1.08;
+  if (adv(s, 'wang')) v *= 1.1;
   return Math.round(v);
 }
 
@@ -151,8 +191,10 @@ export function productIncome(s: GameState, p: ProductInst): number {
   const diff = diffOf(s);
   const mult = eraOf(s.turn).mult;
   const pm = priceMode(p);
-  let inc = (d.base + s.users * d.ucoef) * mult * diff.revMult * levelMult(p) * pm.incomeMult * heatIncomeMult(p)
-    * shockMult(s) * agingOf(p, s.turn).income * brandMult(s.fame);
+  const ag = agingOf(p, s.turn);
+  /* 用户付费额随产品老化衰减（arpu），基础收入也随时代褪色（income） */
+  let inc = (d.base + s.users * d.ucoef * ag.arpu) * mult * diff.revMult * levelMult(p) * pm.incomeMult * heatIncomeMult(p)
+    * shockMult(s) * productShockMult(s, p.def) * ag.income * brandMult(s.fame);
   if (has(s, 'p_free')) inc *= 0.9;
   if (adv(s, 'mayun')) inc *= 1.1;
   if (has(s, 'p_sp2') && (p.def === 'p_sp' || p.def === 'p_game')) inc *= 1.35;
@@ -167,11 +209,12 @@ export function productIncome(s: GameState, p: ProductInst): number {
 /** 仍在运营的产品（已上线且未停运） */
 export const active = (s: GameState) => s.products.filter((p) => p.launched && !p.shut);
 function upkeepSum(s: GameState) {
-  return active(s).reduce((a, p) => a + productDef(p.def).upkeep, 0);
+  return active(s).reduce((a, p) => a + upkeepOf(p, s.turn), 0);
 }
 
 function salaryCost(s: GameState) {
-  let c = s.team * 0.55 * (1 + s.turn * 0.004) * diffOf(s).salaryMult;
+  const eraId = eraOf(s.turn).id;
+  let c = s.team * UNIT_SALARY[eraId] * (1 + s.turn * 0.003) * diffOf(s).salaryMult;
   if (has(s, 'p_frugal')) c *= 0.7;
   if (adv(s, 'dinglei')) c *= 0.85;
   return c;
@@ -179,7 +222,10 @@ function salaryCost(s: GameState) {
 
 export function quarterReport(s: GameState) {
   const launched = active(s);
-  const rows = launched.map((p) => ({ name: productDef(p.def).name, level: p.level, val: productIncome(s, p), aging: agingOf(p, s.turn).eraDiff }));
+  const rows = launched.map((p) => ({
+    name: productDef(p.def).name, def: p.def, level: p.level,
+    val: productIncome(s, p), upkeep: upkeepOf(p, s.turn), aging: agingOf(p, s.turn).eraDiff,
+  }));
   const revenue = rows.reduce((a, r) => a + r.val, 0);
   const upkeep = upkeepSum(s);
   const salary = salaryCost(s);
@@ -232,7 +278,7 @@ export function newGame(name: string, trackId: string, difficultyId: string = 'n
     phase: 'play', turn: 0, name: name || '未命名网络公司', track: trackId,
     difficulty: diff.id, perk,
     funds, users: tr.users, fame: tr.fame, team: 3, ap: 3, apMax: 3, debt: 0,
-    loanTurns: 0, servers: 0, deferred: [], shocks: [], ipo: null,
+    loanTurns: 0, servers: 0, deferred: [], shocks: [], ipo: null, shockBanner: null,
     policies: [], researched: ['t_bbs'], cur: null, prog: {}, techPts: diff.techPts, equity: 100,
     products: [], rel: {}, met: [], advisors: [], flags: {}, log: [], queue: [],
     toasts: [], history: [], eraBanner: null, outcome: null, seq: 100,
@@ -375,7 +421,13 @@ function endTurn(prev: GameState): GameState {
   s.funds = +(s.funds + rep.net).toFixed(1);
 
   /* 4. 用户与声望 */
-  s.users = +(s.users + organicGrowth(s)).toFixed(1);
+  /* 老产品流失用户（落后 2 个时代起），与新增相抵；单季净变化下限 −3 万防雪崩 */
+  const churn = active(s).reduce((a, p) => a + agingOf(p, s.turn).churn, 0);
+  const netUsers = clamp(organicGrowth(s) - churn, -3, Infinity);
+  s.users = Math.max(0, +(s.users + netUsers).toFixed(1));
+  if (churn > 0) {
+    s = mkLog(s, 'warn', `老产品跟不上时代，本季流失用户 ${churn.toFixed(1)} 万。考虑停运落后产品或迭代升级。`);
+  }
   const fameGain = active(s).reduce((a, p) => a + productDef(p.def).fame, 0);
   s.fame = clamp(+(s.fame + fameGain * (adv(s, 'zhang') ? 1.3 : 1) - 0.3).toFixed(1), 0, 100);
 
@@ -502,8 +554,9 @@ function endTurn(prev: GameState): GameState {
     }
   }
 
-  /* 随机事件（事件密集的季度降低概率） */
-  if (Math.random() < (queue.length === payouts.length ? 0.42 : 0.15)) {
+  /* 随机事件：后期（Web2.0 起）竞争加剧，触发概率上调，负面事件更多 */
+  const rndP = queue.length === payouts.length ? 0.42 : s.turn >= 22 ? 0.3 : 0.18;
+  if (Math.random() < rndP) {
     const pool = RANDOMS.filter((r) => r.kind !== 'special' && !s.flags[`used_${r.id}`] && (!r.cond || r.cond(s)));
     if (pool.length) {
       const pick = pool[Math.floor(Math.random() * pool.length)];
@@ -565,7 +618,6 @@ export function reducer(s: GameState, a: Action): GameState {
         loanTurns: st.loanTurns ?? 0,
         servers: st.servers ?? 0,
         deferred: st.deferred ?? [],
-        shocks: (st.shocks ?? []).filter((sh) => sh.left > 0),
         ipo: st.ipo ?? null,
         techPts: st.techPts ?? 0,
         cur: st.cur ?? null,
@@ -576,7 +628,8 @@ export function reducer(s: GameState, a: Action): GameState {
           heat: (p as { heat?: number }).heat ?? 0,
         })),
         queue: (st.queue ?? []).filter((qid) => !!findEvent(qid)),
-        toasts: [], eraBanner: null,
+        toasts: [], eraBanner: null, shockBanner: null,
+        shocks: (st.shocks ?? []).filter((sh) => sh.left > 0).map((sh) => ({ label: sh.label, mult: sh.mult, left: sh.left, product: (sh as { product?: string }).product })),
       };
       if (!loaded.cur) loaded.cur = nextResearchable(loaded)?.id ?? null;
       return loaded;
@@ -593,6 +646,8 @@ export function reducer(s: GameState, a: Action): GameState {
       return { ...s, toasts: s.toasts.filter((t) => t.id !== a.id) };
     case 'BANNER_GONE':
       return { ...s, eraBanner: null };
+    case 'SHOCK_BANNER_GONE':
+      return { ...s, shockBanner: null };
 
     case 'END_TURN': {
       if (s.queue.length > 0 || s.phase !== 'play') return s;
@@ -618,10 +673,21 @@ export function reducer(s: GameState, a: Action): GameState {
         if (ev.impact.incomeMult && ev.impact.turns) {
           n = { ...n, shocks: [...n.shocks.filter((sh) => sh.label !== ev.impact!.label), { label: ev.impact.label, mult: ev.impact.incomeMult, left: ev.impact.turns }] };
           n = mkLog(n, 'history', `【行业冲击】${ev.title}引发「${ev.impact.label}」：全行业收入 ×${ev.impact.incomeMult}，持续 ${ev.impact.turns} 个季度。`);
+          n = { ...n, shockBanner: { label: ev.impact.label, detail: `全行业收入 ×${ev.impact.incomeMult} · 持续 ${ev.impact.turns} 季`, good: ev.impact.incomeMult >= 1 } };
         }
         if (ev.impact.users) n.users = Math.max(0, +(n.users + ev.impact.users).toFixed(1));
         if (ev.impact.fame) n.fame = clamp(+(n.fame + ev.impact.fame).toFixed(1), 0, 100);
         if (ev.impact.tech && n.cur) n.prog = { ...n.prog, [n.cur]: (n.prog[n.cur] || 0) + (ev.impact.tech[1] ?? 0) };
+      }
+      /* 产品级竞争冲击：事件主角直接挤压玩家的同类业务 */
+      if (ev.competes && owns(n, ev.competes.product)) {
+        const cp = ev.competes;
+        n = { ...n, shocks: [...n.shocks.filter((sh) => !(sh.product === cp.product && sh.label === cp.label)), { label: cp.label, mult: cp.mult, left: cp.turns, product: cp.product }] };
+        if (cp.heat) n = { ...n, products: n.products.map((p) => (p.def === cp.product ? { ...p, heat: Math.max(0, (p.heat || 0) - (cp.heat || 0)) } : p)) };
+        if (cp.users) n.users = Math.max(0, +(n.users - cp.users).toFixed(1));
+        n = mkLog(n, 'warn', `【正面竞争】${cp.note}`);
+        n = toast(n, `竞争冲击：你的${productDef(cp.product).name}被挤压`, 'bad');
+        n = { ...n, shockBanner: { label: cp.label, detail: `${productDef(cp.product).name}收入 ×${cp.mult} · ${cp.turns} 季${cp.users ? ` · 流失 ${cp.users} 万用户` : ''}`, good: false } };
       }
       /* 先驱变体：玩家抢先做出相关产品时的额外承认 */
       if (ev.variant && ev.variant.when(n)) {
@@ -673,12 +739,14 @@ export function reducer(s: GameState, a: Action): GameState {
           return checkAch(n);
         }
         case 'hire': {
-          if (n.funds < 8 || n.team >= 30) return s;
+          const u = teamUnitOf(n.turn);
+          const hireCost = [8, 8, 20, 35][eraOf(n.turn).id];
+          if (n.funds < hireCost || n.team >= 40) return s;
           n.ap -= 1;
-          n.funds = +(n.funds - 8).toFixed(1);
+          n.funds = +(n.funds - hireCost).toFixed(1);
           n.team += 1;
           n.apMax = apFor(n.team);
-          n = mkLog(n, 'company', `在人才市场招到一名新员工（猎头费 8 万）。团队 ${n.team} 人。`);
+          n = mkLog(n, 'company', `${u.hire}（猎头费 ${hireCost} 万）。团队规模 ${teamText(n)}。`);
           return checkAch(n);
         }
         case 'raise': {

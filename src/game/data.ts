@@ -246,6 +246,7 @@ export const EVENTS: GameEvent[] = [
     id: 'ev_oicq', turn: 1, kind: 'person', person: 'pony',
     title: '一只胖企鹅诞生了',
     impact: { label: '即时通讯风潮', incomeMult: 1.12, turns: 3, users: 1 },
+    competes: { product: 'p_im', label: '企鹅冲击', mult: 0.75, turns: 6, heat: 20, users: 1, note: 'OICQ 凭免费策略和关系链迅速裂变，你的 IM 用户正在被这只胖企鹅吸走。' },
     assess: (s) =>
       beforeP(s, 'p_im', 1)
         ? '【你的处境】你的 IM 比 OICQ 更早上线——你才是先行者，马化腾才是追赶者。'
@@ -359,6 +360,7 @@ export const EVENTS: GameEvent[] = [
     id: 'ev_cq', turn: 11, kind: 'person', person: 'chen',
     title: '《传奇》燎原',
     impact: { label: '网游市场爆发', incomeMult: 1.2, turns: 4 },
+    competes: { product: 'p_game', label: '传奇风暴', mult: 0.8, turns: 5, heat: 15, note: '《传奇》横扫网吧，沙巴克攻城战抢走了你的玩家——点卡生意不好做了。' },
     assess: (s) =>
       beforeP(s, 'p_game', 11)
         ? '【你的处境】你的网游比《传奇》更早上线——你比陈天桥更早嗅到了点卡的铜臭味。'
@@ -434,6 +436,7 @@ export const EVENTS: GameEvent[] = [
     id: 'ev_sp_crack', turn: 21, kind: 'history',
     title: 'SP 大整顿',
     impact: { label: 'SP 整顿', incomeMult: 0.85, turns: 4 },
+    competes: { product: 'p_sp', label: '梦网清算', mult: 0.7, turns: 4, heat: 25, note: '运营商清退乱扣费 SP，大批同行一夜归零——你的短信增值业务也进入寒冬。' },
     body: '2004 年，运营商启动 SP 业务大检查：乱扣费、陷阱订阅被点名清退，大批 SP 公司一夜归零。短信淘金热的野蛮时代，到头了。你的移动增值业务怎么办？',
     footnote: '史实：2004 年 5 月起中国移动开展 SP 治理，上千家 SP 被处罚，行业收入断崖下跌。',
     cond: (s) => s.products.some((p) => p.def === 'p_sp'),
@@ -462,6 +465,7 @@ export const EVENTS: GameEvent[] = [
     id: 'ev_alipay', turn: 23, kind: 'person', person: 'mayun',
     title: '支付宝：担保交易破局',
     impact: { label: '电商基建爆发', incomeMult: 1.15, turns: 4 },
+    competes: { product: 'p_mpay', label: '支付宝之争', mult: 0.7, turns: 6, heat: 25, users: 3, note: '支付宝用「担保交易」定义了行业标准，你的支付用户正被淘宝生态虹吸。' },
     assess: (s) =>
       beforeP(s, 'p_mpay', 23)
         ? '【你的处境】你的移动支付比支付宝更早上线——你抢先定义了在线支付的玩法，马云在追赶你。'
@@ -487,6 +491,11 @@ export const EVENTS: GameEvent[] = [
   {
     id: 'ev_sd_sina', turn: 24, kind: 'history',
     title: '盛大突袭新浪',
+    competes: { product: 'p_portal', label: '门户黄昏', mult: 0.85, turns: 6, heat: 10, note: '门户之王被恶意收购，宣告门户模式见顶——你的门户广告生意开始走下坡路。' },
+    assess: (s) =>
+      ownsP(s, 'p_portal')
+        ? '【你的处境】你有门户网站。盛大的突袭说明：门户的黄金时代结束了，转型搜索、社交或电商才是出路。'
+        : '【你的处境】门户争霸与你无关，但「资本运作」这门课，每个创业者都该补上。',
     body: '2005 年 2 月 19 日，陈天桥在二级市场 stealth 扫货，盛大宣布持有新浪 19.9% 股份，震动整个互联网。门户之王被人从背后捅了一刀，「收购与被收购」成了行业新主题。你的公司，要不要也学着资本运作？',
     footnote: '史实：2005 年 2 月 19 日盛大宣布收购新浪 19.9% 股份，上演中国互联网第一场恶意收购大戏。',
     choices: [
@@ -497,6 +506,7 @@ export const EVENTS: GameEvent[] = [
   {
     id: 'ev_aug2005', turn: 26, kind: 'history',
     title: '2005 年 8 月 · 百度的疯狂',
+    competes: { product: 'p_search', label: '百度冲击', mult: 0.75, turns: 5, heat: 20, users: 2, note: '百度上市首日暴涨 354%，「百度一下」成为国民习惯，你的搜索流量被品牌效应吸走。' },
     assess: (s) =>
       beforeP(s, 'p_search', 26)
         ? '【你的处境】你的搜索引擎比百度更早上线——百度的暴涨证明了你押注的赛道，资本开始找你。'
@@ -537,6 +547,7 @@ export const EVENTS: GameEvent[] = [
     id: 'ev_iphone', turn: 32, kind: 'history',
     title: 'iPhone 时刻',
     impact: { label: '移动互联网前夜', incomeMult: 1.15, turns: 4 },
+    competes: { product: 'p_wap', label: '智能机革命', mult: 0.6, turns: 6, heat: 20, note: 'iPhone 宣告 WAP 浏览时代终结——触屏 App 才是未来，你的手机站正在过时。' },
     assess: (s) =>
       beforeP(s, 'p_client', 32)
         ? '【你的处境】你的手机客户端比 iPhone 更早布局——当所有人还在观望时，你已经站在掌心入口上。'
@@ -585,6 +596,7 @@ export const EVENTS: GameEvent[] = [
     id: 'ev_3g', turn: 40, kind: 'history',
     title: '3G 牌照发放',
     impact: { label: '3G 时代', incomeMult: 1.18, turns: 5, users: 2 },
+    competes: { product: 'p_wap', label: '3G 替代潮', mult: 0.5, turns: 8, heat: 20, note: '3G 网速让原生 App 体验碾压 WAP 页面——手机站流量断崖式下跌。' },
     body: '2009 年 1 月 7 日，工信部发出三张 3G 牌照，中国移动、联通、电信三大运营商同台竞技。「上网本」「3G 手机」的广告铺满地铁通道，网速从 KB 跳到 MB——移动互联网的大门，真的开了。',
     footnote: '史实：2009 年 1 月 7 日中国发放 3G 牌照；同年 App Store 中国开发者生态开始爆发。',
     choices: [
@@ -596,6 +608,7 @@ export const EVENTS: GameEvent[] = [
     id: 'ev_weibo', turn: 42, kind: 'history',
     title: '微博元年',
     impact: { label: '微博风潮', incomeMult: 1.15, turns: 4, users: 3 },
+    competes: { product: 'p_sns', label: '微博冲击', mult: 0.7, turns: 6, heat: 25, users: 3, note: '微博重新定义了社交——140 字的全民围观，让你的传统 SNS 社区迅速失色。' },
     assess: (s) =>
       beforeP(s, 'p_sns', 42)
         ? '【你的处境】你的 SNS 社区比微博更早布局——微博的爆发验证了社交赛道，你的先发用户是护城河。'
@@ -649,6 +662,7 @@ export const EVENTS: GameEvent[] = [
     id: 'ev_3q', turn: 47, kind: 'history',
     title: '3Q 大战 · 你的站队',
     impact: { label: '行业大洗牌', incomeMult: 1.1, turns: 2, users: 4, fame: 2 },
+    competes: { product: 'p_im', label: '二选一风波', mult: 0.9, turns: 3, heat: 15, note: '「一个艰难的决定」让整个 IM 行业震荡，用户被迫站队，你的即时通讯也被卷入乱局。' },
     assess: (s) =>
       ownsP(s, 'p_im')
         ? `【你的处境】你是 IM 玩家，两强相争让你的产品成为「第三选择」。${vsUsers(s, 3000, 'QQ')}`

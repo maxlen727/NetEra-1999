@@ -18,7 +18,7 @@ const bootState: GameState = {
   funds: 0, users: 0, fame: 0, team: 3, ap: 3, apMax: 3, debt: 0,
   policies: [], researched: ['t_bbs'], cur: null, prog: {}, techPts: 0, equity: 100,
   products: [], rel: {}, met: [], advisors: [], flags: {}, log: [], queue: [],
-  toasts: [], history: [], eraBanner: null, outcome: null, seq: 1,
+  toasts: [], history: [], eraBanner: null, shockBanner: null, outcome: null, seq: 1,
 };
 
 /* 蓝屏兜底：任何渲染异常都不会再白屏，存档依旧安全 */

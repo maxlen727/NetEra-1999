@@ -33,6 +33,8 @@ export interface GameEvent {
   assess?: (s: GameState) => string | null;
   /** 行业冲击：事件发生时作用于玩家公司的临时/即时影响 */
   impact?: { label: string; incomeMult?: number; turns?: number; users?: number; fame?: number; tech?: [string | null, number] };
+  /** 产品级竞争冲击：若玩家拥有该产品，事件主角会直接挤压其业务 */
+  competes?: { product: string; label: string; mult: number; turns: number; heat?: number; users?: number; note: string };
   /** 先驱变体：若玩家已抢先做出相关产品，事件文案与奖励会承认玩家的影响 */
   variant?: { when: (s: GameState) => boolean; body?: string; note?: string; bonus?: Effect };
 }
@@ -101,8 +103,21 @@ export interface ProductInst {
   shut?: boolean;
 }
 
-/** 行业冲击波：重大历史事件对全行业的临时影响 */
-export interface Shock { label: string; mult: number; left: number }
+/** 行业冲击波：重大历史事件对全行业（或特定产品）的临时影响 */
+export interface Shock {
+  label: string;
+  mult: number;
+  left: number;
+  /** 仅作用于特定产品 id（产品级竞争冲击） */
+  product?: string;
+}
+
+/** 全屏冲击横幅（时代突发事件的醒目告知） */
+export interface ShockBanner {
+  label: string;
+  detail: string;
+  good: boolean;
+}
 
 /** 上市信息 */
 export interface IpoInfo {
@@ -187,6 +202,8 @@ export interface GameState {
   toasts: Toast[];
   history: number[];
   eraBanner: { name: string; sub: string } | null;
+  /** 时代冲击全屏横幅 */
+  shockBanner: ShockBanner | null;
   outcome: Outcome | null;
   seq: number;
 }
@@ -213,5 +230,6 @@ export type Action =
   | { type: 'ACCEPT_RAISE'; offer: { investor: string; share: number; amount: number } }
   | { type: 'TOAST_GONE'; id: number }
   | { type: 'BANNER_GONE' }
+  | { type: 'SHOCK_BANNER_GONE' }
   | { type: 'SKIP_EVENT' }
   | { type: 'RESTART' };
