@@ -338,31 +338,42 @@ function endTurn(prev: GameState): GameState {
     s = mkLog(s, 'history', `【时代更替】${newEra.name}来临 —— ${newEra.sub}。市场乘数 ×${newEra.mult}。`);
   }
 
-  /* 7. 事件入队：历史事件（资金 <15 万时，人物事件自动延后，最多延 3 次） */
+  /* 7. 事件入队：历史事件。
+     人物事件若「所有选项都付不起」则自动延后（最多 3 次，超期作错过处理），
+     只要有任何一个选项付得起就正常弹出——绝不把玩家锁死在弹窗里。 */
   const scheduled = EVENTS.filter((e) => e.turn === s.turn && e.kind !== 'payout');
   const payouts = EVENTS.filter((e) => e.turn === s.turn && e.kind === 'payout' && (!e.cond || e.cond(s)));
   const queue = [...payouts.map((e) => e.id)];
   const deferred = [...s.deferred];
+  const payable = (e: GameEvent) => e.choices.some((c) => choiceCost(c) <= s.funds);
   for (const e of scheduled) {
-    if (e.person && s.funds < 15) {
-      const d = deferred.find((x) => x.id === e.id);
-      if (d) {
-        d.n += 1;
-        if (d.n >= 3) { queue.push(e.id); deferred.splice(deferred.indexOf(d), 1); }
+    if (e.person && !payable(e)) {
+      const dd = deferred.find((x) => x.id === e.id);
+      if (dd) {
+        if (dd.n + 1 >= 3) {
+          deferred.splice(deferred.indexOf(dd), 1);
+          s = mkLog(s, 'person', `囊中羞涩，你第三次错过了与${personDef(e.person!).name}会面的机会。他托人带话：「江湖再见。」`);
+        } else {
+          deferred[deferred.indexOf(dd)] = { ...dd, n: dd.n + 1 };
+        }
       } else {
         deferred.push({ id: e.id, n: 1 });
+        s = mkLog(s, 'person', `${personDef(e.person!).name}本想来访，但你正为下个月工资发愁——会面自动延后了。`);
       }
     } else {
       queue.push(e.id);
     }
   }
-  /* 手头宽裕了，把延后的人物请回来 */
-  if (s.funds >= 15 && deferred.length) {
-    for (const d of [...deferred]) {
-      queue.push(d.id);
-      deferred.splice(deferred.indexOf(d), 1);
+  /* 手头宽裕了，把延后的人物请回来（同样要检查付得起才弹） */
+  if (deferred.length) {
+    for (const dd of [...deferred]) {
+      const ev = findEvent(dd.id);
+      if (ev && payable(ev)) {
+        queue.push(dd.id);
+        deferred.splice(deferred.indexOf(dd), 1);
+        s = mkLog(s, 'person', '之前错过会面的时代人物，托人捎话约你改日再聚。');
+      }
     }
-    s = mkLog(s, 'person', '之前错过会面的时代人物，托人捎话约你改日再聚。');
   }
   s.deferred = deferred;
 
@@ -453,9 +464,9 @@ export function reducer(s: GameState, a: Action): GameState {
       const ev = findEvent(id);
       if (!ev) return { ...s, queue: s.queue.slice(1) };
       const choice = ev.choices[a.idx] ?? ev.choices[0];
-      /* 资金门槛：真实花费 = 明面 cost + 负向资金效果。钱不够绝不放行，杜绝「被迫选破产项」 */
+      /* 资金门槛：真实花费 = 明面 cost + 负向资金效果。免费选项永远放行，花钱选项钱不够才拦 */
       const pay = choiceCost(choice);
-      if (s.funds < pay) return toast(s, `资金不足（此选项需 ${pay} 万），换一个吧`, 'bad');
+      if (pay > 0 && s.funds < pay) return toast(s, `资金不足（此选项需 ${pay} 万），换一个吧`, 'bad');
       let n: GameState = { ...s, funds: +(s.funds - (choice.cost ?? 0)).toFixed(1) };
       const gainF = choice.fx.funds ?? 0;
       const fx = { ...choice.fx, funds: gainF > 0 ? 0 : gainF }; // 正向入账单独加，避免与 cost 重复结算

@@ -99,6 +99,30 @@ export const RIVAL_CURVES: { name: string; color: string; pts: [number, number][
   { name: '网易', color: '#c93a5e', pts: [[0, 2], [5, 1], [10, 3], [18, 520], [33, 500], [47, 540]] },
 ];
 
+/* ================= 时代主题（UI 随年代演化） ================= */
+export const ERA_THEMES: { id: number; label: string; bg: string; vars: Record<string, string> }[] = [
+  {
+    id: 0, label: '1999',
+    bg: 'repeating-linear-gradient(0deg, rgba(255,255,255,0.03) 0 1px, transparent 1px 3px), repeating-linear-gradient(90deg, rgba(0,0,0,0.035) 0 1px, transparent 1px 3px), radial-gradient(ellipse 120% 80% at 50% 0%, rgba(150,235,225,0.28), transparent 62%), linear-gradient(160deg, #0e8d84 0%, #0a6e68 100%)',
+    vars: { '--navy-1': '#00007b', '--navy-2': '#1084d0', '--portal': '#ff6a00' },
+  },
+  {
+    id: 1, label: '2002',
+    bg: 'repeating-linear-gradient(0deg, rgba(255,255,255,0.03) 0 1px, transparent 1px 3px), repeating-linear-gradient(90deg, rgba(0,0,0,0.04) 0 1px, transparent 1px 3px), radial-gradient(ellipse 120% 80% at 50% 0%, rgba(220,250,170,0.22), transparent 62%), linear-gradient(160deg, #3c7d46 0%, #24582f 100%)',
+    vars: { '--navy-1': '#1b5e3a', '--navy-2': '#4fae62', '--portal': '#e8a400' },
+  },
+  {
+    id: 2, label: '2006',
+    bg: 'repeating-linear-gradient(0deg, rgba(255,255,255,0.035) 0 1px, transparent 1px 3px), repeating-linear-gradient(90deg, rgba(0,0,0,0.035) 0 1px, transparent 1px 3px), radial-gradient(ellipse 120% 80% at 50% 0%, rgba(190,230,255,0.35), transparent 62%), linear-gradient(160deg, #2f7cc4 0%, #155a9e 100%)',
+    vars: { '--navy-1': '#0a3d91', '--navy-2': '#3aa0ff', '--portal': '#ff5a1f' },
+  },
+  {
+    id: 3, label: '2009',
+    bg: 'repeating-linear-gradient(0deg, rgba(255,255,255,0.025) 0 1px, transparent 1px 3px), repeating-linear-gradient(90deg, rgba(0,0,0,0.05) 0 1px, transparent 1px 3px), radial-gradient(ellipse 120% 80% at 50% 0%, rgba(120,225,255,0.16), transparent 62%), linear-gradient(160deg, #2b3542 0%, #161d26 100%)',
+    vars: { '--navy-1': '#101820', '--navy-2': '#3d5a75', '--portal': '#22c1dc' },
+  },
+];
+
 export const TECHS: TechDef[] = [
   { id: 't_bbs', name: 'BBS 建站', era: 0, cost: 3, desc: '论坛是中文互联网的第一声啼哭。', unlocks: 'p_bbs' },
   { id: 't_portal', name: '门户架构', era: 0, cost: 5, req: ['t_bbs'], desc: '新闻+邮箱+搜索框，一个首页包打天下。', unlocks: 'p_portal' },

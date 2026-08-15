@@ -189,6 +189,24 @@ body::after {
   border-color: #fffdf4 #55524a #55524a #fffdf4;
 }
 
+@keyframes era-drift {
+  from { transform: translateY(-1.5%) rotate(-2deg); }
+  to { transform: translateY(1.5%) rotate(-2deg); }
+}
+.theme-root { transition: background 1.2s ease; }
+.era-watermark {
+  position: absolute;
+  right: -2vw;
+  bottom: -6vh;
+  font-size: 24vw;
+  line-height: 1;
+  color: #fff;
+  opacity: 0.05;
+  user-select: none;
+  pointer-events: none;
+  animation: era-drift 14s ease-in-out infinite alternate;
+}
+
 .pixel-divider {
   height: 4px;
   background:

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
-import { BOOT_LINES, TRACKS } from '../game/data';
+import { BOOT_LINES, DIFFICULTIES, PERKS, TRACKS } from '../game/data';
 import { fmtVal, fmtW } from '../game/engine';
-import type { GameState, Outcome } from '../game/types';
+import type { Difficulty, GameState, Outcome } from '../game/types';
 import { Btn, Icons } from './ui';
 
 /* 拨号音效（WebAudio 合成，无外部资源） */
@@ -77,59 +77,131 @@ export function BootScreen({ onDone, hasSave }: { onDone: (load: boolean) => voi
 
 /* ============ 创业设置 ============ */
 const TRACK_ICON: Record<string, (s?: number) => React.ReactNode> = {
-  portal: (s) => Icons.globe(s), im: (s) => Icons.users(s), search: (s) => Icons.flask(s), ec: (s) => Icons.bag(s),
+  portal: (s) => Icons.globe(s), im: (s) => Icons.users(s), search: (s) => Icons.flask(s),
+  ec: (s) => Icons.bag(s), chip: (s) => Icons.chip(s), bolt: (s) => Icons.bolt(s),
 };
+const trackIcon = (k: string) => (TRACK_ICON[k] ?? Icons.globe);
 
-export function SetupScreen({ onStart }: { onStart: (name: string, track: string) => void }) {
+const DIFF_COLOR: Record<string, string> = { easy: '#1f7a48', normal: '#1c63c9', hard: '#c8322b' };
+
+export function SetupScreen({ onStart }: {
+  onStart: (name: string, track: string, difficulty: Difficulty, perk: string | null) => void;
+}) {
   const [name, setName] = useState('');
   const [track, setTrack] = useState('tr_portal');
+  const [difficulty, setDifficulty] = useState<Difficulty>('normal');
+  const [perk, setPerk] = useState<string | null>(null);
+  const [step, setStep] = useState<0 | 1>(0);
+
   return (
-    <div className="min-h-screen p-4 md:p-8 grid place-items-center">
-      <div className="win-pop bevel-out w-full max-w-3xl">
+    <div className="min-h-screen p-4 md:p-8 grid place-items-center items-start md:items-center">
+      <div className="win-pop bevel-out w-full max-w-4xl">
         <header className="titlebar px-3 py-2 flex items-center gap-2 text-white">
           <span>{Icons.globe(16)}</span>
-          <h1 className="font-disp text-lg tracking-wide">新公司注册登记 · 1999</h1>
+          <h1 className="font-disp text-lg tracking-wide">新公司注册登记 · 中关村 · 1999</h1>
+          <span className="ml-auto font-term text-sm opacity-80">STEP {step + 1}/2</span>
         </header>
-        <div className="p-4 md:p-6 space-y-5">
-          <div>
-            <label className="block font-bold text-[var(--navy-1)] mb-1.5 text-sm">给你的公司起个响亮的名字</label>
-            <input
-              className="field98 w-full text-lg font-disp tracking-wide"
-              placeholder="例如：飞跃在线 / 华夏网联 / 浪潮工作室"
-              maxLength={10}
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-            />
-            <div className="text-[11px] text-[#5a5750] mt-1">将显示为「{name || '未命名网络公司'}有限公司」，载入中国互联网史册。</div>
-          </div>
 
-          <div>
-            <div className="font-bold text-[var(--navy-1)] mb-2 text-sm">选择你的出身（决定开局加成）</div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-              {TRACKS.map((t) => (
-                <button
-                  key={t.id}
-                  onClick={() => setTrack(t.id)}
-                  className={`text-left p-3 border-2 transition-all hover:-translate-y-0.5 ${track === t.id ? 'border-[var(--portal)] bg-[#fdf1e4] shadow-[3px_3px_0_rgba(180,70,0,0.4)]' : 'border-[#b8b4a6] bg-white'}`}
-                >
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className={`grid place-items-center w-8 h-8 text-white ${track === t.id ? 'bg-[var(--portal)]' : 'bg-[var(--navy-1)]'}`}>{TRACK_ICON[t.icon](16)}</span>
-                    <span className="font-disp text-xl">{t.name}</span>
-                  </div>
-                  <div className="text-xs text-[#3a3a3a] leading-snug mb-1.5">{t.desc}</div>
-                  <div className="text-[11px] font-bold text-[#b34a00] bevel-in bg-white inline-block px-1.5 py-0.5">{t.bonus}</div>
-                </button>
-              ))}
+        {step === 0 && (
+          <div className="p-4 md:p-6 space-y-5">
+            <div>
+              <label className="block font-bold text-[var(--navy-1)] mb-1.5 text-sm">给你的公司起个响亮的名字</label>
+              <input
+                className="field98 w-full text-lg font-disp tracking-wide"
+                placeholder="例如：飞跃在线 / 华夏网联 / 浪潮工作室"
+                maxLength={10}
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+              />
+              <div className="text-[11px] text-[#5a5750] mt-1">将显示为「{name || '未命名网络公司'}有限公司」，载入中国互联网史册。</div>
+            </div>
+
+            <div>
+              <div className="font-bold text-[var(--navy-1)] mb-2 text-sm">选择创业难度</div>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                {DIFFICULTIES.map((df) => (
+                  <button
+                    key={df.id}
+                    onClick={() => setDifficulty(df.id)}
+                    className={`text-left p-3 border-2 transition-all hover:-translate-y-0.5 ${difficulty === df.id ? 'border-[var(--portal)] bg-[#fdf1e4] shadow-[3px_3px_0_rgba(180,70,0,0.4)]' : 'border-[#b8b4a6] bg-white'}`}
+                  >
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="font-disp text-xl">{df.name}</span>
+                      <span className="ml-auto text-[10px] font-bold px-1.5 py-0.5 text-white" style={{ background: DIFF_COLOR[df.id] }}>{df.tag}</span>
+                    </div>
+                    <div className="text-[11px] text-[#3a3a3a] leading-snug">{df.desc}</div>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <div className="font-bold text-[var(--navy-1)] mb-2 text-sm">选择你的出身（决定开局加成）</div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
+                {TRACKS.map((t) => {
+                  const Ic = trackIcon(t.icon);
+                  return (
+                    <button
+                      key={t.id}
+                      onClick={() => setTrack(t.id)}
+                      className={`text-left p-3 border-2 transition-all hover:-translate-y-0.5 ${track === t.id ? 'border-[var(--portal)] bg-[#fdf1e4] shadow-[3px_3px_0_rgba(180,70,0,0.4)]' : 'border-[#b8b4a6] bg-white'}`}
+                    >
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className={`grid place-items-center w-8 h-8 text-white ${track === t.id ? 'bg-[var(--portal)]' : 'bg-[var(--navy-1)]'}`}>{Ic(16)}</span>
+                        <span className="font-disp text-xl">{t.name}</span>
+                      </div>
+                      <div className="text-xs text-[#3a3a3a] leading-snug mb-1.5">{t.desc}</div>
+                      <div className="text-[11px] font-bold text-[#b34a00] bevel-in bg-white inline-block px-1.5 py-0.5">{t.bonus}</div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="flex items-center gap-3">
+              <Btn primary className="font-disp text-xl px-10 py-2.5" onClick={() => setStep(1)}>下一步：穿越物资 ▸</Btn>
+              <span className="text-[11px] text-[#5a5750]">初始：3 人团队 · 已掌握「BBS 建站」技术 · 1999 Q1 正式营业</span>
             </div>
           </div>
+        )}
 
-          <div className="flex items-center gap-3 flex-wrap">
-            <Btn primary className="font-disp text-xl px-10 py-2.5" onClick={() => { dialUp(); onStart(name.trim(), track); }}>
-              领取营业执照 · 开局
-            </Btn>
-            <span className="text-[11px] text-[#5a5750]">初始：3 人团队 · 已掌握「BBS 建站」技术 · 1999 Q1 正式营业</span>
+        {step === 1 && (
+          <div className="p-4 md:p-6 space-y-5">
+            <div>
+              <div className="font-bold text-[var(--navy-1)] mb-1 text-sm">带一件穿越物资回去（可多选其一并开局，也可轻装上阵）</div>
+              <div className="text-[11px] text-[#5a5750] mb-2">2026 年的你知道太多未来，但行李箱只装得下一件。</div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                <button
+                  onClick={() => setPerk(null)}
+                  className={`text-left p-3 border-2 transition-all hover:-translate-y-0.5 ${perk === null ? 'border-[var(--portal)] bg-[#fdf1e4] shadow-[3px_3px_0_rgba(180,70,0,0.4)]' : 'border-[#b8b4a6] bg-white'}`}
+                >
+                  <div className="font-disp text-xl mb-0.5">轻装上阵</div>
+                  <div className="text-xs text-[#3a3a3a]">什么都不带。真正的白手起家，硬核玩家的选择。</div>
+                </button>
+                {PERKS.map((p) => (
+                  <button
+                    key={p.id}
+                    onClick={() => setPerk(p.id)}
+                    className={`text-left p-3 border-2 transition-all hover:-translate-y-0.5 ${perk === p.id ? 'border-[var(--portal)] bg-[#fdf1e4] shadow-[3px_3px_0_rgba(180,70,0,0.4)]' : 'border-[#b8b4a6] bg-white'}`}
+                  >
+                    <div className="flex items-center gap-2 mb-0.5">
+                      <span className="font-disp text-xl">{p.name}</span>
+                      <span className="ml-auto text-[10px] font-bold px-1.5 py-0.5 bg-[var(--navy-1)] text-white">{p.tag}</span>
+                    </div>
+                    <div className="text-xs text-[#3a3a3a] leading-snug">{p.desc}</div>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex items-center gap-3 flex-wrap">
+              <Btn className="font-disp text-lg px-6 py-2" onClick={() => setStep(0)}>◂ 上一步</Btn>
+              <Btn primary className="font-disp text-xl px-10 py-2.5" onClick={() => { dialUp(); onStart(name.trim(), track, difficulty, perk); }}>
+                领取营业执照 · 穿越开局
+              </Btn>
+            </div>
           </div>
-        </div>
+        )}
       </div>
     </div>
   );

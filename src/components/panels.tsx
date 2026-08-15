@@ -442,7 +442,7 @@ export function EventDialog({ s, d }: { s: GameState; d: DP }) {
             <div className="space-y-1.5 pt-1">
               {ev.choices.map((c, i) => {
                 const pay = choiceCost(c);
-                const cant = pay > s.funds;
+                const cant = pay > 0 && pay > s.funds;
                 return (
                   <button key={i} disabled={cant} onClick={() => d({ type: 'RESOLVE_EVENT', idx: i })}
                     className="btn98 w-full text-left px-3 py-2 text-sm disabled:opacity-40 hover:brightness-105 transition-all hover:-translate-y-px">
@@ -529,7 +529,7 @@ export function EraBanner({ s, d }: { s: GameState; d: DP }) {
 export function Toasts({ s, d }: { s: GameState; d: DP }) {
   const color = { info: '#1c63c9', good: '#1f7a48', bad: '#c8322b', era: '#b34a00', ach: '#7a4fd0' };
   return (
-    <div className="fixed right-3 bottom-16 z-50 space-y-1.5 w-72">
+    <div className="fixed right-3 bottom-16 z-[70] space-y-1.5 w-72">
       {s.toasts.map((t) => (
         <button key={t.id} onClick={() => d({ type: 'TOAST_GONE', id: t.id })}
           className="toast-in bevel-out w-full text-left px-2.5 py-1.5 text-xs font-bold flex items-center gap-2"
@@ -554,6 +554,10 @@ export function HelpDialog({ onClose }: { onClose: () => void }) {
     ['顾问', '好感刷到 3 点可聘为战略顾问（最多 2 位），提供永久 buff。'],
     ['政策', '双槽位公司战略，随时切换：烧钱推广、免费战略、资本运作……'],
     ['融资', '行动点换钱：稀释股权拿 VC 的钱。创始人持股低于 34% 会被董事会否决。'],
+    ['机房', '用户超过机房容量会「服务器过载」：收入 −25%、增长减半。在行动中心花 1 点 + 钱扩容。'],
+    ['升级', '已上线产品可迭代到 Lv.3，每级收入 +30%。老产品别放着吃灰。'],
+    ['急救', '资金 < 30 万时可借过桥贷款 +30 万（6 期内每期自动还 7 万）。人物事件付不起钱会自动改期，绝不会卡死。'],
+    ['难度', '开局三档：休闲 / 标准 / 硬核，另有一件「穿越物资」五选一。主题界面会随四个时代自动演化。'],
     ['结局', '2010 年终估值 ≥ 22 亿即 S 级「互联网传奇」；中途还可能收到巨头收购要约——卖，也是一种胜利。'],
   ];
   return (
