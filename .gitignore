@@ -1,4 +1,57 @@
 ```
-# No build artifacts, dependencies, or temporary files detected in changes
-# Only source/config files (.md, .ts) were added/modified
+# Build artifacts
+dist/
+build/
+*.css
+*.js
+
+# Dependencies
+node_modules/
+
+# Environment
+.env
+.env.local
+*.env.*
+
+# Editors
+.vscode/
+.idea/
+
+# Logs and temp files
+*.log
+*.tmp
+*.swp
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Java
+*.class
+*.jar
+*.war
+*.ear
+target/
+.gradle/
+
+# C/C++
+*.o
+*.obj
+*.so
+*.a
+*.lib
+*.dll
+*.exe
+
+# Other common ignores
+*.zip
+*.tar.gz
+*.tgz
+*.gz
+*.rar
+*.7z
+.DS_Store
+Thumbs.db
 ```
