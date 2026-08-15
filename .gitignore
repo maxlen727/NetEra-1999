@@ -1,5 +1,33 @@
+# 依赖
 node_modules/
-.next/
+
+# 构建产物
 dist/
-build/
+dist-ssr/
+*.local
+
+# 日志
+logs/
 *.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# 编辑器 / 系统
+.vscode/*
+!.vscode/extensions.json
+.idea/
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# 环境变量
+.env
+.env.local
+.env.*.local
+.next/
+build/
