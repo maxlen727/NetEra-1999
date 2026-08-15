@@ -834,6 +834,37 @@ export const RANDOMS: GameEvent[] = [
       { label: '听天由命', hint: '用户 +1 · 声望 −1', fx: { users: 1, fame: -1 } },
     ],
   },
+  /* ===== 估值压力专属事件（枪打出头鸟，仅在被行业盯上时触发） ===== */
+  {
+    id: 'r_antitrust', turn: -1, kind: 'special', neg: true, title: '反垄断调查',
+    cond: (s) => !!s.flags.pressure_on,
+    body: '你的市场份额引来监管注意，工商与信息产业部门进驻调查「涉嫌不正当竞争」。律师函堆满前台，媒体蹲守在楼下。这是每个行业老大都要交的学费。',
+    choices: [
+      { label: '全面配合 + 缴纳保证金', hint: '资金 −20 · 声望 +1', cost: 20, fx: { funds: -20, fame: 1, flags: ['antitrust_coop'], log: '你主动整改并缴纳保证金，调查平稳落地，还落了个「守法典范」的名声。' } },
+      { label: '聘请顶级律师团抗辩', hint: '资金 −12 · 随机结果', cost: 12, fx: { funds: -12, fame: -2, flags: ['antitrust_fight'], log: '旷日持久的听证会消耗了大量精力，业务节奏被打乱。' } },
+      { label: '低调整改，收缩战线', hint: '用户 −4 · 声望 −1', fx: { users: -4, fame: -1, flags: ['antitrust_shrink'], log: '你砍掉了最激进的几条业务线，风头暂时过去了。' } },
+    ],
+  },
+  {
+    id: 'r_blockade', turn: -1, kind: 'special', neg: true, title: '巨头封杀令',
+    cond: (s) => !!s.flags.pressure_on,
+    body: '行业老大悄悄给渠道下了封杀令：应用商店下架你的产品、导航站撤掉你的入口、甚至连你的推广链接都被屏蔽。「二选一」的达摩克利斯之剑落了下来。',
+    choices: [
+      { label: '砸钱自建渠道突围', hint: '资金 −15 · 保住用户', cost: 15, fx: { funds: -15, users: -1, flags: ['blockade_break'], log: '你烧钱自建分发渠道，硬生生撕开一道口子。' } },
+      { label: '公开喊冤，舆论反击', hint: '声望 +2 · 用户 −3', fx: { fame: 2, users: -3, flags: ['blockade_pr'], log: '你的「弱者呐喊」赢得同情分，但渠道封锁还是让你掉了用户。' } },
+      { label: '忍气吞声', hint: '用户 −5 · 声望 −2', fx: { users: -5, fame: -2, flags: ['blockade_silent'], log: '渠道被掐断，用户眼睁睁看着入口消失却无能为力。' } },
+    ],
+  },
+  {
+    id: 'r_exodus', turn: -1, kind: 'special', neg: true, title: '核心团队被挖角潮',
+    cond: (s) => !!s.flags.pressure_on && s.team >= 8,
+    body: '对手开出三倍薪资 + 原始股，你的技术骨干和运营大将接连递上辞呈。HR 一周约谈了十一个人，会议室的烟灰缸就没空过。树大招风，风先吹的是你的人。',
+    choices: [
+      { label: '全员加薪 + 期权池', hint: '资金 −18 · 稳住团队', cost: 18, fx: { funds: -18, flags: ['exodus_pay'], log: '真金白银留住了人心，核心团队一个没走。' } },
+      { label: '只留核心，放走边缘', hint: '团队 −2 · 资金 −5', cost: 5, fx: { team: -2, funds: -5, tech: [null, -2], flags: ['exodus_cut'], log: '你保住了架构师，但流失了两个能打的干将，研发进度受阻。' } },
+      { label: '火速扩招补缺口', hint: '资金 −10 · 团队 −1 · 声望 −1', cost: 10, fx: { funds: -10, team: -1, fame: -1, flags: ['exodus_hire'], log: '新人还在磨合期，老将已经走远。青黄不接的一季。' } },
+    ],
+  },
 ];
 
 /* ================= 投资人 / 融资 ================= */

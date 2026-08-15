@@ -615,7 +615,14 @@ export function EventDialog({ s, d }: { s: GameState; d: DP }) {
       <div className="dialog-pop bevel-out w-full max-w-xl">
         <Win title={`${ev.kind === 'payout' ? '投资回报' : ev.kind === 'person' ? '时代人物' : '时代事件'} · ${turnLabel(s.turn)}`} tone={tone as 'navy' | 'gray' | 'orange'} icon={ev.kind === 'person' ? Icons.person() : Icons.scroll()}>
           <div className="p-3.5 space-y-3 text-sm max-h-[70vh] overflow-y-auto scroll-98">
-            <h3 className="font-disp text-2xl leading-tight text-[var(--navy-1)]">{ev.title}</h3>
+            {ev.neg && (
+              <div className="flex items-center gap-2 bg-[#c8322b] text-white px-2.5 py-1.5 -m-0.5 animate-pulse">
+                <span>{Icons.bolt(14)}</span>
+                <span className="font-disp tracking-widest text-sm">突发事件 · 必须做出选择</span>
+                <span className="ml-auto text-[10px] font-bold opacity-80">处理不当将付出代价</span>
+              </div>
+            )}
+            <h3 className={`font-disp text-2xl leading-tight ${ev.neg ? 'text-[var(--alert)]' : 'text-[var(--navy-1)]'}`}>{ev.title}</h3>
             {person && (
               <div className="flex items-center gap-2.5 bevel-in bg-white p-2">
                 <span className="font-disp w-12 h-12 grid place-items-center text-white text-2xl shrink-0 shadow-[3px_3px_0_rgba(0,0,0,0.25)]" style={{ background: person.color }}>{person.name[0]}</span>
@@ -764,28 +771,43 @@ export function EraBanner({ s, d }: { s: GameState; d: DP }) {
   );
 }
 
-/* ============ 时代冲击全屏横幅 ============ */
+/* ============ 时代冲击全屏横幅 ============
+   两种形态：
+   ① 有待处理的突发事件（queue 非空）→ 红色警报，必须点「去处理」进入决策窗口，不会自动消失；
+   ② 纯行业冲击通知（无待处理事件）→ 点任意处或「知道了」关闭，App 会在数秒后自动收起。 */
 export function ShockBanner({ s, d }: { s: GameState; d: DP }) {
   const b = s.shockBanner;
   if (!b) return null;
-  const good = b.good;
+  const hasPending = s.queue.length > 0; // 下面压着一个必须处理的事件弹窗
+  const dismiss = () => d({ type: 'SHOCK_BANNER_GONE' });
   return (
     <div
-      className="fixed inset-0 z-[60] grid place-items-center p-4 cursor-pointer"
-      style={{ background: good ? 'rgba(8,60,24,0.55)' : 'rgba(90,10,6,0.6)' }}
-      onClick={() => d({ type: 'SHOCK_BANNER_GONE' })}
+      className="fixed inset-0 z-[60] grid place-items-center p-4"
+      style={{ background: b.good ? 'rgba(8,60,24,0.55)' : 'rgba(90,10,6,0.62)' }}
+      onClick={hasPending ? undefined : dismiss}
     >
-      <div className={`dialog-pop bevel-out w-full max-w-md text-center ${good ? '' : 'shadow-[0_0_40px_rgba(200,50,43,0.5)]'}`}>
-        <div className="titlebar px-3 py-1.5 flex items-center justify-center gap-2" style={good ? undefined : { background: 'linear-gradient(90deg,#8a1410,#c8322b)' }}>
-          <span>{good ? Icons.star(15) : Icons.bolt(15)}</span>
-          <span className="font-disp tracking-widest text-sm">{good ? '行业利好 · INDUSTRY BOOM' : '时代冲击 · INDUSTRY SHOCK'}</span>
+      <div className={`dialog-pop bevel-out w-full max-w-md text-center ${b.good ? '' : 'shadow-[0_0_40px_rgba(200,50,43,0.5)]'}`}>
+        <div className="titlebar px-3 py-1.5 flex items-center justify-center gap-2" style={b.good ? undefined : { background: 'linear-gradient(90deg,#8a1410,#c8322b)' }}>
+          <span>{b.good ? Icons.star(15) : Icons.bolt(15)}</span>
+          <span className="font-disp tracking-widest text-sm">
+            {b.good ? '行业利好 · INDUSTRY BOOM' : hasPending ? '突发事件 · 需要你决策' : '时代冲击 · INDUSTRY SHOCK'}
+          </span>
         </div>
         <div className="p-5">
-          <div className={`font-disp text-3xl mb-2 ${good ? 'text-[var(--money)]' : 'text-[var(--alert)]'}`}>{b.label}</div>
+          <div className={`font-disp text-3xl mb-2 ${b.good ? 'text-[var(--money)]' : 'text-[var(--alert)]'} ${!b.good && hasPending ? 'animate-pulse' : ''}`}>{b.label}</div>
           <div className="text-sm text-[#3a3a3a] leading-relaxed mb-4">{b.detail}</div>
           <div className="pixel-divider mb-4" />
-          <div className="text-[11px] text-[#8a867a] mb-3">该冲击已计入你的季度财报，可在「时代编年史」查看详情。</div>
-          <Btn primary onClick={() => d({ type: 'SHOCK_BANNER_GONE' })} className="px-8">知道了</Btn>
+          {hasPending ? (
+            <>
+              <div className="text-[11px] text-[var(--alert)] font-bold mb-3">这件事需要你亲自拍板，点击下方按钮进入决策。</div>
+              <Btn primary onClick={dismiss} className="px-10 py-2 font-disp text-lg pulse-glow">去处理突发事件 ▸</Btn>
+            </>
+          ) : (
+            <>
+              <div className="text-[11px] text-[#8a867a] mb-3">该冲击已计入你的季度财报，可在「时代编年史」查看详情。</div>
+              <Btn primary onClick={dismiss} className="px-8">知道了</Btn>
+            </>
+          )}
         </div>
       </div>
     </div>
@@ -827,6 +849,8 @@ export function HelpDialog({ onClose }: { onClose: () => void }) {
     ['冲击', '重大历史事件会真实冲击你的财报（全屏红色横幅提醒）：如 OICQ 挤压你的 IM、支付宝冲击你的移动支付、3G 淘汰手机站。'],
     ['先驱', '抢在历史节点前做出同类产品（如 2005 前上线移动支付），会被记为「先驱者」，事件文案改写、声望大涨。'],
     ['股权', '上市是关键转折：募资 25% 流通，此后每季承担合规成本、股价随财报波动；创始人持股低于 34% 会被董事会持续施压。'],
+    ['围剿', '树大招风：2004 年起，估值超过市面第一的 30% 会触发「枪打出头鸟」——负面事件概率 +60%、惩罚 +35%，还会引来反垄断调查、巨头封杀等专属危机。想躺赢？行业不答应。'],
+    ['突发', '红色警报弹出后，点「去处理突发事件」进入决策窗口。每个突发事件都必须做出选择，逃避只会让损失更重。'],
     ['急救', '资金 < 30 万时可借过桥贷款 +30 万（6 期内每期自动还 7 万）。人物事件付不起钱会自动改期，绝不会卡死。'],
     ['难度', '开局三档：休闲 / 标准 / 硬核，另有一件「穿越物资」五选一。主题界面会随四个时代自动演化。'],
     ['结局', '2010 年终估值 ≥ 22 亿即 S 级「互联网传奇」；中途还可能收到巨头收购要约——卖，也是一种胜利。'],

@@ -2,7 +2,7 @@ import {
   ACHIEVEMENTS, DIFFICULTIES, ERAS, EVENTS, HISTORICAL_BOARD, MILESTONES, OPS_ACTIONS, PERKS, PERSONS, POLICIES,
   PRICE_MODES, PRODUCTS, RANDOMS, RANKS, RIVAL_CURVES, SERVER_TIERS, TECHS, TOTAL_TURNS, TRACKS, eraOf, turnLabel,
 } from './data';
-import type { Action, Choice, GameEvent, GameState, Outcome, PriceMode, ProductDef, ProductInst } from './types';
+import type { Action, Choice, Effect, GameEvent, GameState, Outcome, PriceMode, ProductDef, ProductInst } from './types';
 
 /* ---------------- 工具 ---------------- */
 export const fmtW = (v: number, unit = '万') => {
@@ -163,6 +163,22 @@ export function rivalVal(curve: { pts: [number, number][] }, turn: number): numb
   }
   return pts[pts.length - 1][1];
 }
+
+/** 当前回合市面估值最高的对手（与 valuation 同量纲） */
+export function topRivalVal(turn: number): number {
+  return Math.max(...RIVAL_CURVES.map((c) => rivalVal(c, turn)), 0);
+}
+/**
+ * 估值压力（枪打出头鸟）：估值超过市面第一的 30% 后，
+ * 负面事件概率与惩罚都会加大。仅在中后期（2004 年起）生效。
+ */
+export function isPressured(s: GameState): boolean {
+  if (s.turn < 18) return false;
+  const top = topRivalVal(s.turn);
+  return top > 0 && valuation(s) > top * 0.3;
+}
+/** 压力状态下对负面随机事件惩罚的放大倍率 */
+export const PRESSURE_AMP = { funds: 1.35, users: 1.25, fame: 1.25 };
 
 export function valuation(s: GameState): number {
   /* 已上市：以市值为准 */
@@ -590,6 +606,19 @@ function endTurn(prev: GameState): GameState {
   }
   s.deferred = deferred;
 
+  /* 估值压力检测（枪打出头鸟）：估值超市面第一 30% 后进入被围剿状态 */
+  const pressured = isPressured(s);
+  if (pressured && !s.flags.pressure_on) {
+    s.flags = { ...s.flags, pressure_on: true };
+    const top = Math.round(topRivalVal(s.turn));
+    s = mkLog(s, 'warn', `【枪打出头鸟】你的估值已达行业第一（${top} 万）的 ${(valuation(s) / top * 100).toFixed(0)}%。监管、巨头与同行的目光都盯上了你——负面事件概率与惩罚将显著加大。`);
+    s = toast(s, '警告：你已被行业盯上', 'bad');
+    s = { ...s, shockBanner: { label: '枪打出头鸟', detail: `估值超过行业第一的 30%。负面事件概率 +60%，惩罚 +35%。`, good: false } };
+  } else if (!pressured && s.flags.pressure_on) {
+    s.flags = { ...s.flags, pressure_on: false };
+    s = mkLog(s, 'company', '你的估值回落到安全线以下，行业的注意力暂时从你身上移开了。');
+  }
+
   /* 特别事件（董事会博弈 / 上市股价波动）：独立判定，保证关键剧情触发 */
   if (Math.random() < 0.22) {
     const specials = RANDOMS.filter((r) => r.kind === 'special' && !s.flags[`used_${r.id}`] && (!r.cond || r.cond(s)));
@@ -605,10 +634,17 @@ function endTurn(prev: GameState): GameState {
   }
 
   /* 随机事件：后期（Web2.0 起）竞争加剧，触发概率上调；
-     门户时代（前 10 回合）新手保护：负面随机事件不触发 */
-  const rndP = queue.length === payouts.length ? 0.42 : s.turn >= 22 ? 0.3 : 0.18;
+     门户时代（前 10 回合）新手保护：负面随机事件不触发；
+     估值压力下：概率 +60%，且优先抽负面事件 */
+  let rndP = queue.length === payouts.length ? 0.42 : s.turn >= 22 ? 0.3 : 0.18;
+  if (pressured) rndP = Math.min(0.85, rndP * 1.6);
   if (Math.random() < rndP) {
-    const pool = RANDOMS.filter((r) => r.kind !== 'special' && !s.flags[`used_${r.id}`] && (!r.cond || r.cond(s)) && !(r.neg && s.turn < 10));
+    let pool = RANDOMS.filter((r) => r.kind !== 'special' && !s.flags[`used_${r.id}`] && (!r.cond || r.cond(s)) && !(r.neg && s.turn < 10));
+    /* 压力下优先负面事件：若池中有负面事件，70% 概率只从负面里抽 */
+    if (pressured && Math.random() < 0.7) {
+      const negPool = pool.filter((r) => r.neg);
+      if (negPool.length) pool = negPool;
+    }
     if (pool.length) {
       const pick = pool[Math.floor(Math.random() * pool.length)];
       s.flags[`used_${pick.id}`] = true;
@@ -725,8 +761,19 @@ export function reducer(s: GameState, a: Action): GameState {
       if (pay > 0 && s.funds < pay) return toast(s, `资金不足（此选项需 ${pay} 万），换一个吧`, 'bad');
       let n: GameState = { ...s, funds: +(s.funds - (choice.cost ?? 0)).toFixed(1) };
       const gainF = choice.fx.funds ?? 0;
-      const fx = { ...choice.fx, funds: gainF > 0 ? 0 : gainF }; // 正向入账单独加，避免与 cost 重复结算
+      let fx: Effect = { ...choice.fx, funds: gainF > 0 ? 0 : gainF }; // 正向入账单独加，避免与 cost 重复结算
+      /* 估值压力下：负面随机事件的惩罚放大 */
+      const amplify = ev.neg && isPressured(n);
+      if (amplify) {
+        fx = {
+          ...fx,
+          funds: (fx.funds ?? 0) < 0 ? +((fx.funds ?? 0) * PRESSURE_AMP.funds).toFixed(1) : fx.funds,
+          users: (fx.users ?? 0) < 0 ? +((fx.users ?? 0) * PRESSURE_AMP.users).toFixed(1) : fx.users,
+          fame: (fx.fame ?? 0) < 0 ? +((fx.fame ?? 0) * PRESSURE_AMP.fame).toFixed(1) : fx.fame,
+        };
+      }
       n = applyFx(n, fx);
+      if (amplify) n = mkLog(n, 'warn', '【压力反噬】你树大招风，这次危机的代价被放大了。');
       if (gainF > 0) n = { ...n, funds: +(n.funds + gainF).toFixed(1) };
       if (ev.person) n = grantMet(n, ev.person);
       /* 行业冲击波：重大事件对全行业的临时影响（门户时代负面冲击减半，新手保护） */

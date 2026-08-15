@@ -133,11 +133,12 @@ export default function App() {
   }, [s.eraBanner]);
 
   /* 冲击横幅自动消失 */
+  /* 冲击横幅自动消失：有待处理的突发事件时不自动收起，必须手动「去处理」 */
   useEffect(() => {
-    if (!s.shockBanner) return;
+    if (!s.shockBanner || s.queue.length > 0) return;
     const t = setTimeout(() => d({ type: 'SHOCK_BANNER_GONE' }), 5000);
     return () => clearTimeout(t);
-  }, [s.shockBanner]);
+  }, [s.shockBanner, s.queue.length]);
 
   /* 键盘：回车 = 下一回合 */
   useEffect(() => {
