@@ -7,6 +7,7 @@ import {
 import { BootScreen, OverScreen, SetupScreen } from './components/screens';
 import { ERA_THEMES, eraOf } from './game/data';
 import { reducer } from './game/engine';
+import { sfx } from './game/sfx';
 import type { Action, Difficulty, GameState } from './game/types';
 
 const SAVE_KEY = 'wangshi1999_save_v1';
@@ -75,6 +76,52 @@ export default function App() {
     const ts = s.toasts.map((t) => setTimeout(() => d({ type: 'TOAST_GONE', id: t.id }), t.kind === 'ach' ? 5000 : 3200));
     return () => ts.forEach(clearTimeout);
   }, [s.toasts]);
+
+  /* -------- 音效系统：监听状态变化自动播音 -------- */
+  const sfxRef = useRef({ funds: 0, head: null as string | null, turn: -1, toastId: 0, banner: false, phase: 'boot', logId: 0 });
+  useEffect(() => {
+    const p = sfxRef.current;
+    if (s.phase === 'play' || s.phase === 'over') {
+      if (p.funds !== s.funds) {
+        if (s.funds - p.funds > 0.4) sfx.cash();
+        else if (p.funds - s.funds > 0.4) sfx.spend();
+      }
+      const head = s.queue[0] ?? null;
+      if (head && head !== p.head) sfx.pop();
+      if (s.turn > p.turn && p.turn >= 0 && s.phase === 'play') sfx.whoosh();
+      const last = s.toasts[s.toasts.length - 1];
+      if (last && last.id !== p.toastId) {
+        if (last.kind === 'good') sfx.ding();
+        else if (last.kind === 'bad') sfx.warn();
+        else if (last.kind === 'ach') sfx.ach();
+        else sfx.tick();
+      }
+      if (s.eraBanner && !p.banner) sfx.era();
+      if (s.phase === 'over' && p.phase !== 'over') {
+        if (s.outcome?.type === 'bankrupt') sfx.sad();
+        else sfx.fanfare();
+      }
+      const logHead = s.log[0];
+      if (logHead && logHead.id !== p.logId && (logHead.kind === 'history' || logHead.kind === 'person')) sfx.type();
+    }
+    sfxRef.current = {
+      funds: s.funds, head: s.queue[0] ?? null, turn: s.turn, banner: !!s.eraBanner, phase: s.phase,
+      toastId: s.toasts.length ? s.toasts[s.toasts.length - 1].id : p.toastId,
+      logId: s.log.length ? s.log[0].id : p.logId,
+    };
+  }, [s]);
+
+  /* 全局按钮点击音 + 首次手势解锁音频 */
+  useEffect(() => {
+    const click = (e: MouseEvent) => {
+      const btn = (e.target as HTMLElement).closest?.('button');
+      if (btn && !btn.disabled) sfx.tick();
+    };
+    const unlock = () => sfx.unlock();
+    window.addEventListener('click', click);
+    window.addEventListener('pointerdown', unlock, { once: true });
+    return () => { window.removeEventListener('click', click); window.removeEventListener('pointerdown', unlock); };
+  }, []);
 
   /* 时代横幅自动消失 */
   useEffect(() => {

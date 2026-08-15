@@ -368,7 +368,7 @@ function endTurn(prev: GameState): GameState {
   if (deferred.length) {
     for (const dd of [...deferred]) {
       const ev = findEvent(dd.id);
-      if (ev && payable(ev)) {
+      if (ev && payable(ev) && !queue.includes(dd.id)) {
         queue.push(dd.id);
         deferred.splice(deferred.indexOf(dd), 1);
         s = mkLog(s, 'person', '之前错过会面的时代人物，托人捎话约你改日再聚。');
@@ -393,7 +393,8 @@ function endTurn(prev: GameState): GameState {
     queue.push('ev_acq');
   }
 
-  s.queue = queue;
+  /* 队列净化：去重 + 剔除无法识别的事件 id，杜绝「待处理」假死 */
+  s.queue = [...new Set(queue)].filter((qid) => !!findEvent(qid));
   for (const id of queue) {
     const ev = findEvent(id);
     if (ev && (ev.kind === 'history' || ev.kind === 'payout')) {
@@ -442,8 +443,13 @@ export function reducer(s: GameState, a: Action): GameState {
         techPts: st.techPts ?? 0,
         cur: st.cur ?? null,
         products: (st.products ?? []).map((p) => ({ ...p, level: (p as { level?: number }).level ?? 1 })),
+        queue: (st.queue ?? []).filter((qid) => !!findEvent(qid)),
         toasts: [], eraBanner: null,
       };
+    }
+    case 'SKIP_EVENT': {
+      if (!s.queue.length) return s;
+      return mkLog({ ...s, queue: s.queue.slice(1) }, 'warn', '一条无法读取的时代记录被跳过，时间继续向前。');
     }
     case 'BOOT_DONE':
       return { ...s, phase: 'setup' };

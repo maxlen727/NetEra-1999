@@ -1,5 +1,6 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { DIFFICULTIES, RIVAL_CURVES, SERVER_TIERS } from '../game/data';
+import { isMuted, setMuted, sfx } from '../game/sfx';
 import {
   ERAS, PERSONS, POLICIES, PRODUCTS, TECHS, TOTAL_TURNS, eraOf, findEvent, fmtVal, fmtW,
   organicGrowth, personDef, productDef, quarterReport, raiseOffer, acceptRaise, researchSpeed, techDef, turnLabel, valuation,
@@ -78,9 +79,29 @@ export function ResourceBar({ s, d }: { s: GameState; d: DP }) {
             <i key={i} className={`block w-4 h-4 border ${i < s.ap ? 'bg-[var(--portal)] border-[#8a3a00] shadow-[inset_1px_1px_0_rgba(255,255,255,0.5)]' : 'bg-[#efece2] border-[#8a867a]'}`} />
           ))}
         </div>
+        <MuteBtn />
         <Btn small onClick={() => d({ type: 'RESTART' })} title="回到创业选择界面（当前进度不会自动保存）">重开</Btn>
       </div>
     </div>
+  );
+}
+
+/* 静音开关（偏好写入 localStorage） */
+function MuteBtn() {
+  const [m, setM] = useState(isMuted());
+  return (
+    <button
+      className="btn98 px-1.5 py-1 grid place-items-center"
+      title={m ? '音效已关闭 · 点击打开' : '音效已开启 · 点击静音'}
+      onClick={() => {
+        const next = !m;
+        setMuted(next);
+        setM(next);
+        if (!next) sfx.ding();
+      }}
+    >
+      <span className={m ? 'text-[#8a867a]' : 'text-[var(--navy-1)]'}>{m ? Icons.mute(15) : Icons.sound(15)}</span>
+    </button>
   );
 }
 
@@ -415,6 +436,10 @@ export function ActionsPanel({ s, d }: { s: GameState; d: DP }) {
 /* ============ 事件对话框 ============ */
 export function EventDialog({ s, d }: { s: GameState; d: DP }) {
   const ev = s.queue.length ? findEvent(s.queue[0]) : undefined;
+  /* 自愈：队列头部是无法识别的事件 id 时自动跳过，绝不假死 */
+  useEffect(() => {
+    if (s.queue.length && !findEvent(s.queue[0])) d({ type: 'SKIP_EVENT' });
+  }, [s.queue, d]);
   if (!ev) return null;
   const person = ev.person ? personDef(ev.person) : null;
   const tone = ev.kind === 'payout' ? 'orange' : ev.kind === 'person' ? 'navy' : 'gray';
@@ -464,13 +489,19 @@ export function EventDialog({ s, d }: { s: GameState; d: DP }) {
 /* ============ 底部任务栏 ============ */
 export function Taskbar({ s, d, onHelp }: { s: GameState; d: DP; onHelp: () => void }) {
   const waiting = s.queue.length > 0;
+  const stuck = waiting && !findEvent(s.queue[0]);
   return (
     <div className="bevel-out px-2 py-1.5 flex items-center gap-2">
       <Btn onClick={onHelp} className="font-disp text-sm flex items-center gap-1.5">
         <span className="text-[var(--portal)]">{Icons.globe(16)}</span> 开始
       </Btn>
+      {stuck && (
+        <Btn onClick={() => d({ type: 'SKIP_EVENT' })} className="font-bold text-[var(--alert)] flex items-center gap-1" title="队列里有无法读取的事件，点击手动跳过">
+          {Icons.warn(13)} 跳过异常事件
+        </Btn>
+      )}
       <div className="bevel-in bg-white px-2 py-1 text-[11px] hidden md:block text-[#5a5750]">
-        {waiting ? '有时代事件待处理…' : s.ap > 0 ? `剩余 ${s.ap} 点行动点，花完再结束回合更划算` : '行动点用完了，进入下一季度吧'}
+        {stuck ? '检测到异常事件记录，已提供跳过按钮（通常会自动修复）' : waiting ? '有时代事件待处理…' : s.ap > 0 ? `剩余 ${s.ap} 点行动点，花完再结束回合更划算` : '行动点用完了，进入下一季度吧'}
       </div>
       <div className="flex-1 min-w-0 hidden sm:flex items-center gap-2 bg-[#101418] px-2 py-1 overflow-hidden" title="对手估值行情（百万元）">
         <span className="font-disp text-[11px] shrink-0 text-[#e8c15a]">对手观察</span>

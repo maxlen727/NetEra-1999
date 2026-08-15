@@ -175,4 +175,5 @@ export type Action =
   | { type: 'ACCEPT_RAISE'; offer: { investor: string; share: number; amount: number } }
   | { type: 'TOAST_GONE'; id: number }
   | { type: 'BANNER_GONE' }
+  | { type: 'SKIP_EVENT' }
   | { type: 'RESTART' };
