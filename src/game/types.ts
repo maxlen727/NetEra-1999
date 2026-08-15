@@ -107,8 +107,6 @@ export interface ProductInst {
   heat: number;
   /** 已停运 */
   shut?: boolean;
-  /** 首次落后于时代的回合号（按产品类型所属时代判定） */
-  behindSince?: number;
   /** 被监管强制下线的截止回合（该回合之前无收入） */
   offlineUntil?: number;
 }

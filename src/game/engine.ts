@@ -93,32 +93,40 @@ export function productShockMult(s: GameState, def: string): number {
 /** 产品上的竞争冲击标签（UI 展示用） */
 export const productShocks = (s: GameState, def: string) => s.shocks.filter((sh) => sh.product === def);
 /**
- * 产品老化（v5 · 难度下调）：按「产品类型所属时代」对比当前时代。
- * 落后 1 个时代只衰减不亏损（给转型缓冲期）；落后 2 个时代满 3 个季度才进入 rot：
- * 收入强制转负、加速流失用户，倒逼停运或转型。
+ * 产品老化（v6）：按「产品类型所属时代」对比当前时代。
+ * 落后 1 个时代：收入/ARPU/拉新大幅削弱（还能赚，但在失血边缘）；
+ * 落后 2 个时代：**立即强制亏损**（rot）——收入转负、加速流失用户，倒逼停运或转型。
  */
-export function agingOf(p: ProductInst, turn: number): { eraDiff: number; income: number; arpu: number; pull: number; churn: number; rot: boolean; behindQuarters: number } {
+export function agingOf(p: ProductInst, turn: number): { eraDiff: number; income: number; arpu: number; pull: number; churn: number; rot: boolean } {
   const prodEra = techDef(productDef(p.def).tech).era;
   const curEra = eraOf(turn).id;
   const eraDiff = Math.max(0, curEra - prodEra);
-  const behindQuarters = eraDiff >= 2 && p.behindSince != null ? Math.max(0, turn - p.behindSince) : 0;
-  const rot = eraDiff >= 2 && behindQuarters >= 3;
+  const rot = eraDiff >= 2; // 过气两个时代，直接亏损
   return {
     eraDiff,
     income: Math.pow(0.45, eraDiff),          // 收入断崖式衰减
     arpu: Math.pow(0.45, eraDiff),            // 用户付费意愿同步下滑
     pull: Math.pow(0.7, eraDiff),             // 拉新能力衰减
-    churn: rot ? 1.5 + eraDiff : eraDiff >= 2 ? 0.4 * (eraDiff - 1) : 0, // 落后 2 时代起少量流失，rot 后大幅流失
+    churn: rot ? 1.5 + eraDiff : eraDiff * 0.3, // 落后即小幅流失，rot 后大幅流失
     rot,
-    behindQuarters,
   };
 }
-/** 单产品运维成本：老产品运维成本随「类型落后」通胀 */
+
+/** 成本通胀系数：2002 Q3（turn 13）之后，维护与宣发成本随时间上升（+2%/季） */
+export function costScale(turn: number): number {
+  return turn >= 13 ? +(1 + (turn - 12) * 0.02).toFixed(2) : 1;
+}
+/** 产品运营动作的实际成本（随通胀上升） */
+export function opsCostOf(kind: 'ad' | 'content', turn: number): number {
+  return Math.max(1, Math.round(opsDef(kind).cost * costScale(turn)));
+}
+
+/** 单产品运维成本：老产品运维成本随「类型落后」通胀 × 全行业维护成本通胀 */
 export function upkeepOf(p: ProductInst, turn: number): number {
   const d = productDef(p.def);
   const prodEra = techDef(d.tech).era;
   const eraDiff = Math.max(0, eraOf(turn).id - prodEra);
-  return d.upkeep * (1 + 0.6 * eraDiff);
+  return +(d.upkeep * (1 + 0.6 * eraDiff) * costScale(turn)).toFixed(2);
 }
 /** 品牌溢价：声望带来收入加成 */
 export const brandMult = (fame: number) => 1 + fame / 500;
@@ -475,20 +483,13 @@ function endTurn(prev: GameState): GameState {
   const rep = quarterReport(s);
   s.funds = +(s.funds + rep.net).toFixed(1);
 
-  /* 3.5 记录产品首次落后 2 个时代的回合（用于 rot 强制亏损的 3 季计时） */
-  for (const p of s.products) {
-    if (p.launched && !p.shut && p.behindSince == null) {
-      const prodEra = techDef(productDef(p.def).tech).era;
-      if (eraOf(s.turn).id - prodEra >= 2) p.behindSince = s.turn;
-    }
-  }
-  /* rot 预警：刚开始亏损的落后产品单独提示 */
+  /* rot 预警：落后 2 个时代的产品进入强制亏损，单独提示 */
   for (const p of active(s)) {
     const ag = agingOf(p, s.turn);
     const flag = `rotwarn_${p.uid}`;
     if (ag.rot && !s.flags[flag]) {
       s.flags = { ...s.flags, [flag]: true };
-      s = mkLog(s, 'warn', `【产品亏损】「${productDef(p.def).name}」已落后 ${ag.eraDiff} 个时代超过 3 个季度，开始持续亏损（每季 −${(upkeepOf(p, s.turn) * 0.6).toFixed(1)} 万）并大量流失用户。停运或转型刻不容缓！`);
+      s = mkLog(s, 'warn', `【产品亏损】「${productDef(p.def).name}」已落后 ${ag.eraDiff} 个时代，按行规直接强制亏损（每季 −${(upkeepOf(p, s.turn) * 0.6).toFixed(1)} 万）并大量流失用户。停运或转型刻不容缓！`);
       s = toast(s, `「${productDef(p.def).name}」开始亏损`, 'bad');
     }
   }
@@ -739,17 +740,12 @@ export function reducer(s: GameState, a: Action): GameState {
         ipo: st.ipo ?? null,
         techPts: st.techPts ?? 0,
         cur: st.cur ?? null,
-        products: (st.products ?? []).map((p) => {
-          const prodEra = techDef(productDef(p.def).tech).era;
-          const behindOk = eraOf(st.turn).id - prodEra >= 2;
-          return {
-            ...p,
-            level: (p as { level?: number }).level ?? 1,
-            price: (p as { price?: PriceMode }).price ?? 'std',
-            heat: (p as { heat?: number }).heat ?? 0,
-            behindSince: behindOk ? (p as { behindSince?: number }).behindSince : undefined,
-          };
-        }),
+        products: (st.products ?? []).map((p) => ({
+          ...p,
+          level: (p as { level?: number }).level ?? 1,
+          price: (p as { price?: PriceMode }).price ?? 'std',
+          heat: (p as { heat?: number }).heat ?? 0,
+        })),
         queue: (st.queue ?? []).filter((qid) => !!findEvent(qid)),
         toasts: [], eraBanner: null, shockBanner: null,
         shocks: (st.shocks ?? []).filter((sh) => sh.left > 0).map((sh) => ({ label: sh.label, mult: sh.mult, left: sh.left, product: (sh as { product?: string }).product })),
@@ -883,15 +879,16 @@ export function reducer(s: GameState, a: Action): GameState {
           return checkAch(n);
         }
         case 'marketing': {
-          if (n.funds < 8) return s;
+          const mcost = Math.max(8, Math.round(8 * costScale(n.turn))); // 宣发成本随时间通胀
+          if (n.funds < mcost) return s;
           n.ap -= 1;
-          n.funds = +(n.funds - 8).toFixed(1);
+          n.funds = +(n.funds - mcost).toFixed(1);
           const eraIdx = eraOf(n.turn).id;
           let gain = 2.5 + eraIdx * 1.5;
           if (has(n, 'p_burn')) gain *= 1.6;
           n.users = +(n.users + gain).toFixed(1);
           n.fame = clamp(+(n.fame + 1.5).toFixed(1), 0, 100);
-          n = mkLog(n, 'company', `投入 8 万市场推广（报纸中缝+网吧桌面+公交拉手），新增用户约 ${gain.toFixed(1)} 万。`);
+          n = mkLog(n, 'company', `投入 ${mcost} 万市场推广（报纸中缝+网吧桌面+公交拉手），新增用户约 ${gain.toFixed(1)} 万。`);
           return checkAch(n);
         }
         case 'hire': {
@@ -1015,16 +1012,17 @@ export function reducer(s: GameState, a: Action): GameState {
       const p = s.products.find((x) => x.uid === a.uid);
       if (!p || !p.launched) return s;
       const op = opsDef(a.kind);
-      if (s.funds < op.cost) return s;
+      const cost = opsCostOf(a.kind, s.turn); // 宣发/运营成本随时间通胀
+      if (s.funds < cost) return s;
       const d = productDef(p.def);
       const newHeat = Math.min(100, (p.heat || 0) + op.heat);
-      let n: GameState = { ...s, ap: s.ap - 1, funds: +(s.funds - op.cost).toFixed(1), products: s.products.map((x) => (x.uid === a.uid ? { ...x, heat: newHeat } : x)) };
+      let n: GameState = { ...s, ap: s.ap - 1, funds: +(s.funds - cost).toFixed(1), products: s.products.map((x) => (x.uid === a.uid ? { ...x, heat: newHeat } : x)) };
       if (a.kind === 'ad') {
         n.users = +(n.users + 1.5).toFixed(1);
-        n = mkLog(n, 'company', `为「${d.name}」投放推广（${op.cost} 万）：热度升至 ${newHeat}，新增用户 1.5 万。`);
+        n = mkLog(n, 'company', `为「${d.name}」投放推广（${cost} 万）：热度升至 ${newHeat}，新增用户 1.5 万。`);
       } else {
         n.fame = clamp(+(n.fame + 1.5).toFixed(1), 0, 100);
-        n = mkLog(n, 'company', `为「${d.name}」做内容运营（${op.cost} 万）：热度升至 ${newHeat}，声望 +1.5。`);
+        n = mkLog(n, 'company', `为「${d.name}」做内容运营（${cost} 万）：热度升至 ${newHeat}，声望 +1.5。`);
       }
       if (newHeat >= 80 && (p.heat || 0) < 80) n = toast(n, `「${d.name}」成为爆款！`, 'good');
       return n;

@@ -5,7 +5,7 @@ import {
   ERAS, PERSONS, POLICIES, PRODUCTS, TECHS, TOTAL_TURNS, eraOf, findEvent, fmtVal, fmtW,
   organicGrowth, personDef, productDef, quarterReport, raiseOffer, acceptRaise, researchSpeed, techDef, turnLabel, valuation,
   choiceCost, productUpgradeCost, serverUpgradeCost, rivalVal, nextResearchable, productIncome, priceMode, opsDef, agingOf,
-  teamText, teamUnitOf, productShocks,
+  teamText, teamUnitOf, productShocks, upkeepOf, opsCostOf, costScale,
 } from '../game/engine';
 import type { Action, GameState } from '../game/types';
 import { Btn, Icons, Spark, Win } from './ui';
@@ -250,10 +250,8 @@ export function CompanyPanel({ s, d }: { s: GameState; d: DP }) {
                     return (
                       <div className={`text-[10px] px-1.5 py-0.5 mt-1 leading-tight ${ag.rot ? 'text-[var(--alert)] bg-[#fdecea] font-bold' : 'text-[#b34a00] bg-[#fdf1e4]'}`}>
                         {ag.rot
-                          ? `⚠ 强制亏损中（落后 ${ag.eraDiff} 个时代已 ${ag.behindQuarters} 季）：每季失血，用户加速流失——尽快停运或转型！`
-                          : ag.eraDiff >= 2
-                            ? `产品老化（落后 ${ag.eraDiff} 个时代已 ${ag.behindQuarters} 季）：收入×${ag.income.toFixed(2)} 拉新×${ag.pull.toFixed(2)}——再过 ${3 - ag.behindQuarters} 季将强制亏损`
-                            : `产品老化（落后 ${ag.eraDiff} 个时代）：收入×${ag.income.toFixed(2)} 拉新×${ag.pull.toFixed(2)}——暂不亏损，抓紧迭代升级`}
+                          ? `⚠ 强制亏损中（已落后 ${ag.eraDiff} 个时代）：每季失血 −${(upkeepOf(p, s.turn) * 0.6).toFixed(1)} 万，用户加速流失——尽快停运或转型！`
+                          : `产品老化（落后 ${ag.eraDiff} 个时代）：收入×${ag.income.toFixed(2)} 拉新×${ag.pull.toFixed(2)}——⚠ 再落后 1 个时代将直接强制亏损`}
                       </div>
                     );
                   })()}
@@ -295,14 +293,17 @@ export function CompanyPanel({ s, d }: { s: GameState; d: DP }) {
                         </div>
                         {/* 运营动作 */}
                         <div className="flex items-center gap-1">
-                          {OPS_ACTIONS.map((op) => (
-                            <button key={op.kind} title={`${op.desc}（耗 1 行动点）`}
-                              disabled={busy || s.funds < op.cost}
-                              onClick={() => d({ type: 'OPS', uid: p.uid, kind: op.kind })}
-                              className="btn98 flex-1 text-[10px] font-bold py-0.5 disabled:opacity-40">
-                              {op.name} ·{op.cost}万
-                            </button>
-                          ))}
+                          {OPS_ACTIONS.map((op) => {
+                            const oc = opsCostOf(op.kind, s.turn);
+                            return (
+                              <button key={op.kind} title={`${op.desc}（耗 1 行动点）${oc > op.cost ? `· 当前已通胀至 ${oc} 万` : ''}`}
+                                disabled={busy || s.funds < oc}
+                                onClick={() => d({ type: 'OPS', uid: p.uid, kind: op.kind })}
+                                className="btn98 flex-1 text-[10px] font-bold py-0.5 disabled:opacity-40">
+                                {op.name} ·{oc}万
+                              </button>
+                            );
+                          })}
                           {p.level < 3 ? (
                             <button title="版本迭代，季度收入 +30%（耗 1 行动点）"
                               disabled={busy || s.funds < productUpgradeCost(p.level)}
@@ -501,6 +502,7 @@ export function ActionsPanel({ s, d }: { s: GameState; d: DP }) {
   const buildable = PRODUCTS.filter((p) => s.researched.includes(p.tech) && !s.products.some((x) => x.def === p.id));
   const inDev = s.products.filter((p) => !p.launched).length;
   const offer = useMemo(() => (mode === 'raise' ? raiseOffer(s) : null), [mode, s]);
+  const mcost = Math.max(8, Math.round(8 * costScale(s.turn))); // 宣发成本随时间通胀
 
   const ABtn = ({ children, onClick, disabled, title }: { children: React.ReactNode; onClick: () => void; disabled?: boolean; title: string }) => (
     <button onClick={onClick} disabled={disabled} title={title}
@@ -520,8 +522,8 @@ export function ActionsPanel({ s, d }: { s: GameState; d: DP }) {
             <ABtn title={s.cur ? '加速当前研发 +3 点进度' : '先在「研发实验室」点击一项技术设为主攻方向'} disabled={busy || noAp || !s.cur} onClick={() => d({ type: 'ACT', kind: 'research' })}>
               {Icons.flask(15)} 研发推进 <i className="not-italic text-[10px] text-[#5a5750]">1 行动点</i>
             </ABtn>
-            <ABtn title="投入 8 万做市场推广" disabled={busy || noAp || s.funds < 8} onClick={() => d({ type: 'ACT', kind: 'marketing' })}>
-              {Icons.star(15)} 市场推广 <i className="not-italic text-[10px] text-[#5a5750]">1 点 + ¥8万</i>
+            <ABtn title={`投入 ${mcost} 万做市场推广${mcost > 8 ? '（宣发成本随时间上涨）' : ''}`} disabled={busy || noAp || s.funds < mcost} onClick={() => d({ type: 'ACT', kind: 'marketing' })}>
+              {Icons.star(15)} 市场推广 <i className="not-italic text-[10px] text-[#5a5750]">1 点 + ¥{mcost}万</i>
             </ABtn>
             <ABtn title={`${teamUnitOf(s.turn).hire}（提升研发与开发速度，增加行动点上限）。当前规模：${teamText(s)}`} disabled={busy || noAp || s.funds < [8, 8, 20, 35][eraOf(s.turn).id] || s.team >= 40} onClick={() => d({ type: 'ACT', kind: 'hire' })}>
               {Icons.users(15)} 招兵买马 <i className="not-italic text-[10px] text-[#5a5750]">1 点 + ¥{[8, 8, 20, 35][eraOf(s.turn).id]}万</i>
@@ -854,7 +856,8 @@ export function HelpDialog({ onClose }: { onClose: () => void }) {
     ['融资', '行动点换钱：稀释股权拿 VC 的钱。创始人持股低于 34% 会被董事会否决。'],
     ['机房', '用户超过机房容量会「服务器过载」：收入 −25%、增长减半。在行动中心花 1 点 + 钱扩容。'],
     ['升级', '已上线产品可迭代到 Lv.3，每级收入 +30%。老产品别放着吃灰。'],
-    ['老化', '产品按「类型所属时代」判落后：落后 1 个时代只衰减不亏损；落后 2 个时代满 3 季才强制亏损并加速流失用户——给你留足了转型窗口。'],
+    ['老化', '产品按「类型所属时代」判落后：落后 1 个时代收入大幅削弱（还能赚）；落后 2 个时代立即强制亏损并加速流失用户——该断舍离就断舍离。'],
+    ['通胀', '2002 Q3 之后，服务器维护与市场推广/运营成本随时间上涨（每季 +2%）。越到后期，烧钱越狠。'],
     ['新手保护', '门户时代（前 10 回合）：负面随机事件不触发，历史负面冲击与巨头竞争冲击一律减半。先站稳，再迎接泡沫。'],
     ['冲击', '重大历史事件会真实冲击你的财报（全屏红色横幅提醒）：如 OICQ 挤压你的 IM、支付宝冲击你的移动支付、3G 淘汰手机站。'],
     ['先驱', '抢在历史节点前做出同类产品（如 2005 前上线移动支付），会被记为「先驱者」，事件文案改写、声望大涨。'],
