@@ -1,6 +1,6 @@
 import {
-  ACHIEVEMENTS, ERAS, EVENTS, HISTORICAL_BOARD, PERSONS, POLICIES, PRODUCTS,
-  RANDOMS, RANKS, TECHS, TOTAL_TURNS, TRACKS, eraOf, turnLabel,
+  ACHIEVEMENTS, DIFFICULTIES, ERAS, EVENTS, HISTORICAL_BOARD, PERKS, PERSONS, POLICIES,
+  PRODUCTS, RANDOMS, RANKS, RIVAL_CURVES, SERVER_TIERS, TECHS, TOTAL_TURNS, TRACKS, eraOf, turnLabel,
 } from './data';
 import type { Action, Choice, GameEvent, GameState, Outcome, ProductDef } from './types';
 
@@ -44,13 +44,43 @@ export function apFor(team: number) {
   return team >= 24 ? 5 : team >= 12 ? 4 : 3;
 }
 
+export const diffOf = (s: GameState) => DIFFICULTIES.find((d) => d.id === s.difficulty) ?? DIFFICULTIES[1];
+
+/** 选项真实花费 = 明面 cost + 暗扣的负向资金效果 */
+export const choiceCost = (c: Choice) => (c.cost ?? 0) + Math.max(0, -(c.fx.funds ?? 0));
+
+/** 机房容量（万用户） */
+export const capacityOf = (s: GameState) => SERVER_TIERS[Math.min(s.servers, SERVER_TIERS.length - 1)].cap;
+export const isOverloaded = (s: GameState) => s.users > capacityOf(s);
+export function serverUpgradeCost(s: GameState): number {
+  if (s.servers >= SERVER_TIERS.length - 1) return 0;
+  return SERVER_TIERS[s.servers + 1].cost;
+}
+export const productUpgradeCost = (level: number) => 12 + 10 * (level - 1);
+export const levelMult = (p: { level: number }) => 1 + 0.3 * ((p.level || 1) - 1);
+
+/** 对手估值行情：按回合线性插值（单位：百万元） */
+export function rivalVal(curve: { pts: [number, number][] }, turn: number): number {
+  const pts = curve.pts;
+  if (turn <= pts[0][0]) return pts[0][1];
+  for (let i = 1; i < pts.length; i++) {
+    if (turn <= pts[i][0]) {
+      const [t0, v0] = pts[i - 1];
+      const [t1, v1] = pts[i];
+      return v0 + ((v1 - v0) * (turn - t0)) / (t1 - t0);
+    }
+  }
+  return pts[pts.length - 1][1];
+}
+
 export function valuation(s: GameState): number {
   let v = s.users * 2 + s.fame * 2.5 + s.techPts * 2;
   v += s.researched.length * 6;
   for (const p of s.products) {
     const d = productDef(p.def);
-    v += p.launched ? d.devCost + d.base * 10 : d.devCost * 0.4;
+    v += p.launched ? d.devCost + d.base * 10 + ((p.level || 1) - 1) * 10 : d.devCost * 0.4;
   }
+  v += s.servers * 20; // 机房资产
   v += eraOf(s.turn).id * 30;
   const pays = Object.keys(s.flags).filter((f) => f.startsWith('payoff_')).length;
   const invs = Object.keys(s.flags).filter((f) => f.startsWith('inv_')).length;
@@ -61,17 +91,19 @@ export function valuation(s: GameState): number {
   return Math.round(v);
 }
 
-function productIncome(s: GameState, defId: string): number {
-  const d = productDef(defId);
+function productIncome(s: GameState, p: { def: string; level: number }): number {
+  const d = productDef(p.def);
+  const diff = diffOf(s);
   const mult = eraOf(s.turn).mult;
-  let inc = (d.base + s.users * d.ucoef) * mult;
+  let inc = (d.base + s.users * d.ucoef) * mult * diff.revMult * levelMult(p);
   if (has(s, 'p_free')) inc *= 0.9;
   if (adv(s, 'mayun')) inc *= 1.1;
-  if (has(s, 'p_sp2') && (defId === 'p_sp' || defId === 'p_game')) inc *= 1.35;
-  if (adv(s, 'chen') && defId === 'p_game') inc *= 1.3;
-  if (adv(s, 'wangzhidong') && (defId === 'p_portal' || defId === 'p_mail')) inc *= 1.25;
-  if (defId === 'p_sp' && s.flags.sp_clean) inc *= 0.8;
-  if (defId === 'p_sp' && s.flags.sp_black) inc *= 1.3;
+  if (has(s, 'p_sp2') && (p.def === 'p_sp' || p.def === 'p_game')) inc *= 1.35;
+  if (adv(s, 'chen') && p.def === 'p_game') inc *= 1.3;
+  if (adv(s, 'wangzhidong') && (p.def === 'p_portal' || p.def === 'p_mail')) inc *= 1.25;
+  if (p.def === 'p_sp' && s.flags.sp_clean) inc *= 0.8;
+  if (p.def === 'p_sp' && s.flags.sp_black) inc *= 1.3;
+  if (isOverloaded(s)) inc *= 0.75; // 服务器过载惩罚
   return inc;
 }
 
@@ -80,15 +112,19 @@ function upkeepSum(s: GameState) {
 }
 
 function salaryCost(s: GameState) {
-  let c = s.team * 0.55 * (1 + s.turn * 0.004);
+  let c = s.team * 0.55 * (1 + s.turn * 0.004) * diffOf(s).salaryMult;
   if (has(s, 'p_frugal')) c *= 0.7;
   if (adv(s, 'dinglei')) c *= 0.85;
   return c;
 }
 
 export function quarterReport(s: GameState) {
-  const revenue = s.products.filter((p) => p.launched).reduce((a, p) => a + productIncome(s, p.def), 0);
-  return { revenue, upkeep: upkeepSum(s), salary: salaryCost(s), net: revenue - upkeepSum(s) - salaryCost(s) };
+  const launched = s.products.filter((p) => p.launched);
+  const rows = launched.map((p) => ({ name: productDef(p.def).name, level: p.level, val: productIncome(s, p) }));
+  const revenue = rows.reduce((a, r) => a + r.val, 0);
+  const upkeep = upkeepSum(s);
+  const salary = salaryCost(s);
+  return { revenue, upkeep, salary, net: revenue - upkeep - salary, rows, overloaded: isOverloaded(s), capacity: capacityOf(s) };
 }
 
 function devSpeed(s: GameState) {
@@ -108,11 +144,12 @@ export function researchSpeed(s: GameState) {
 
 export function organicGrowth(s: GameState) {
   const pull = s.products.filter((p) => p.launched).reduce((a, p) => a + productDef(p.def).pull, 0);
-  let g = (0.15 + s.fame * 0.04 + pull * 0.6) * Math.pow(eraOf(s.turn).mult, 0.8);
+  let g = (0.15 + s.fame * 0.04 + pull * 0.6) * Math.pow(eraOf(s.turn).mult, 0.8) * diffOf(s).growthMult;
   if (has(s, 'p_user')) g *= 1.4;
   if (has(s, 'p_free')) g *= 1.25;
   if (adv(s, 'pony')) g *= 1.15;
   if (adv(s, 'zhou')) g *= 1.2;
+  if (isOverloaded(s)) g *= 0.5; // 服务器撑不住，新用户流失
   return g;
 }
 
@@ -127,19 +164,31 @@ function toast(s: GameState, text: string, kind: 'info' | 'good' | 'bad' | 'era'
   return { ...s, seq: s.seq + 1, toasts: [...s.toasts, { id: s.seq + 5000 * seq++, text, kind }].slice(-4) };
 }
 
-export function newGame(name: string, trackId: string): GameState {
+export function newGame(name: string, trackId: string, difficultyId: string = 'normal', perk: string | null = null): GameState {
   const tr = TRACKS.find((t) => t.id === trackId)!;
+  const diff = DIFFICULTIES.find((d) => d.id === difficultyId) ?? DIFFICULTIES[1];
+  const funds = Math.round(tr.funds * diff.fundsMult);
   let s: GameState = {
     phase: 'play', turn: 0, name: name || '未命名网络公司', track: trackId,
-    funds: tr.funds, users: tr.users, fame: tr.fame, team: 3, ap: 3, apMax: 3, debt: 0,
-    policies: [], researched: ['t_bbs'], cur: null, prog: {}, techPts: 0, equity: 100,
+    difficulty: diff.id, perk,
+    funds, users: tr.users, fame: tr.fame, team: 3, ap: 3, apMax: 3, debt: 0,
+    loanTurns: 0, servers: 0, deferred: [],
+    policies: [], researched: ['t_bbs'], cur: null, prog: {}, techPts: diff.techPts, equity: 100,
     products: [], rel: {}, met: [], advisors: [], flags: {}, log: [], queue: [],
     toasts: [], history: [], eraBanner: null, outcome: null, seq: 100,
   };
   const [tid, amt] = tr.techBoost;
   s.prog = { [tid]: amt };
-  s = mkLog(s, 'company', `${s.name} 在中关村一间 20 平米的民房里注册成立了。启动资金 ${tr.funds} 万，团队 3 人。`);
+  /* 穿越物资 */
+  const perkDef = PERKS.find((p) => p.id === perk);
+  if (perk === 'perk_angel') { s.funds += 25; s.equity = 95; }
+  if (perk === 'perk_veteran') { s.team += 1; s.fame += 2; }
+  if (perk === 'perk_media') { s.fame += 6; }
+  if (perk === 'perk_server') { s.servers = 1; }
+  if (perk === 'perk_code') { s.techPts += 2; }
+  s = mkLog(s, 'company', `${s.name} 在中关村一间 20 平米的民房里注册成立了。启动资金 ${s.funds} 万，团队 ${s.team} 人。难度：${diff.name}。`);
   s = mkLog(s, 'company', `创业方向：${tr.name} —— ${tr.desc}`);
+  if (perkDef) s = mkLog(s, 'company', `穿越物资「${perkDef.name}」已生效：${perkDef.desc}`);
   // 开局事件
   const first = EVENTS.filter((e) => e.turn === 0);
   s = { ...s, queue: first.map((e) => e.id) };
@@ -252,6 +301,25 @@ function endTurn(prev: GameState): GameState {
   const fameGain = s.products.filter((p) => p.launched).reduce((a, p) => a + productDef(p.def).fame, 0);
   s.fame = clamp(+(s.fame + fameGain * (adv(s, 'zhang') ? 1.3 : 1) - 0.3).toFixed(1), 0, 100);
 
+  /* 4.5 过桥贷款还款 */
+  if (s.loanTurns > 0) {
+    s.funds = +(s.funds - 7).toFixed(1);
+    s.loanTurns -= 1;
+    s = s.loanTurns === 0
+      ? mkLog(s, 'company', '过桥贷款已全部还清！信用恢复，信托公司愿意再给你授信了。')
+      : mkLog(s, 'company', `过桥贷款还款 7 万，剩余 ${s.loanTurns} 期。`);
+  }
+
+  /* 4.6 服务器过载预警 */
+  if (isOverloaded(s) && !s.flags.overload_warned) {
+    s.flags.overload_warned = true;
+    s = mkLog(s, 'warn', `服务器过载！用户 ${fmtW(s.users)} 已超过「${SERVER_TIERS[s.servers].name}」容量（${capacityOf(s)} 万）。收入 −25%、增长减半——尽快在「行动」里升级机房！`);
+    s = toast(s, '警告：机房容量不足', 'bad');
+  } else if (!isOverloaded(s) && s.flags.overload_warned) {
+    s.flags.overload_warned = false;
+    s = mkLog(s, 'company', '扩容完成，服务器负载恢复正常。');
+  }
+
   /* 5. 推进回合 */
   const oldEra = eraOf(s.turn);
   s.turn += 1;
@@ -270,13 +338,36 @@ function endTurn(prev: GameState): GameState {
     s = mkLog(s, 'history', `【时代更替】${newEra.name}来临 —— ${newEra.sub}。市场乘数 ×${newEra.mult}。`);
   }
 
-  /* 7. 事件入队：历史事件 */
+  /* 7. 事件入队：历史事件（资金 <15 万时，人物事件自动延后，最多延 3 次） */
   const scheduled = EVENTS.filter((e) => e.turn === s.turn && e.kind !== 'payout');
   const payouts = EVENTS.filter((e) => e.turn === s.turn && e.kind === 'payout' && (!e.cond || e.cond(s)));
-  const queue = [...payouts.map((e) => e.id), ...scheduled.map((e) => e.id)];
+  const queue = [...payouts.map((e) => e.id)];
+  const deferred = [...s.deferred];
+  for (const e of scheduled) {
+    if (e.person && s.funds < 15) {
+      const d = deferred.find((x) => x.id === e.id);
+      if (d) {
+        d.n += 1;
+        if (d.n >= 3) { queue.push(e.id); deferred.splice(deferred.indexOf(d), 1); }
+      } else {
+        deferred.push({ id: e.id, n: 1 });
+      }
+    } else {
+      queue.push(e.id);
+    }
+  }
+  /* 手头宽裕了，把延后的人物请回来 */
+  if (s.funds >= 15 && deferred.length) {
+    for (const d of [...deferred]) {
+      queue.push(d.id);
+      deferred.splice(deferred.indexOf(d), 1);
+    }
+    s = mkLog(s, 'person', '之前错过会面的时代人物，托人捎话约你改日再聚。');
+  }
+  s.deferred = deferred;
 
-  /* 随机事件 */
-  if (scheduled.length === 0 && Math.random() < 0.42) {
+  /* 随机事件（事件密集的季度降低概率） */
+  if (Math.random() < (queue.length === payouts.length ? 0.42 : 0.15)) {
     const pool = RANDOMS.filter((r) => !s.flags[`used_${r.id}`] && (!r.cond || r.cond(s)));
     if (pool.length) {
       const pick = pool[Math.floor(Math.random() * pool.length)];
@@ -299,15 +390,15 @@ function endTurn(prev: GameState): GameState {
     }
   }
 
-  /* 8. 破产检查 */
+  /* 8. 破产检查（破产线随难度浮动；提示过桥贷款自救） */
   if (s.funds < 0) {
     s.debt += 1;
-    s = mkLog(s, 'warn', `现金流告急！账面资金 ${s.funds.toFixed(1)} 万。${s.debt >= 1 ? '再这样下去要发不出工资了！' : ''}`);
+    s = mkLog(s, 'warn', `现金流告急！账面资金 ${s.funds.toFixed(1)} 万（破产线 ${diffOf(s).bankruptAt} 万）。${s.loanTurns === 0 ? '提示：可以在「行动」里借过桥贷款续命。' : '贷款还在还款期，撑住！'}`);
     s = toast(s, '警告：现金流转负', 'bad');
   } else {
     s.debt = 0;
   }
-  if (s.funds < -30 || s.debt >= 2) {
+  if (s.funds < diffOf(s).bankruptAt || s.debt >= 2) {
     s = mkLog(s, 'warn', '公司资金链断裂，团队解散。1999–2010 的互联网大潮里，多了一个无人记得的名字。');
     s = { ...s, phase: 'over', outcome: makeOutcome(s, 'bankrupt', Math.max(0, valuation(s) * 0.3)) };
     s.history = [...s.history, Math.max(0, valuation(s) * 0.3)];
@@ -326,9 +417,23 @@ function endTurn(prev: GameState): GameState {
 export function reducer(s: GameState, a: Action): GameState {
   switch (a.type) {
     case 'NEW_GAME':
-      return newGame(a.name, a.track);
-    case 'LOAD_GAME':
-      return a.state;
+      return newGame(a.name, a.track, a.difficulty ?? 'normal', a.perk ?? null);
+    case 'LOAD_GAME': {
+      /* 旧存档兼容：补齐新版本字段 */
+      const st = a.state;
+      return {
+        ...st,
+        difficulty: st.difficulty ?? 'normal',
+        perk: st.perk ?? null,
+        loanTurns: st.loanTurns ?? 0,
+        servers: st.servers ?? 0,
+        deferred: st.deferred ?? [],
+        techPts: st.techPts ?? 0,
+        cur: st.cur ?? null,
+        products: (st.products ?? []).map((p) => ({ ...p, level: (p as { level?: number }).level ?? 1 })),
+        toasts: [], eraBanner: null,
+      };
+    }
     case 'BOOT_DONE':
       return { ...s, phase: 'setup' };
     case 'RESTART':
@@ -348,13 +453,20 @@ export function reducer(s: GameState, a: Action): GameState {
       const ev = findEvent(id);
       if (!ev) return { ...s, queue: s.queue.slice(1) };
       const choice = ev.choices[a.idx] ?? ev.choices[0];
-      let n = applyFx(s, choice.fx);
+      /* 资金门槛：真实花费 = 明面 cost + 负向资金效果。钱不够绝不放行，杜绝「被迫选破产项」 */
+      const pay = choiceCost(choice);
+      if (s.funds < pay) return toast(s, `资金不足（此选项需 ${pay} 万），换一个吧`, 'bad');
+      let n: GameState = { ...s, funds: +(s.funds - (choice.cost ?? 0)).toFixed(1) };
+      const gainF = choice.fx.funds ?? 0;
+      const fx = { ...choice.fx, funds: gainF > 0 ? 0 : gainF }; // 正向入账单独加，避免与 cost 重复结算
+      n = applyFx(n, fx);
+      if (gainF > 0) n = { ...n, funds: +(n.funds + gainF).toFixed(1) };
       if (ev.person) n = grantMet(n, ev.person);
-      n.queue = n.queue.slice(1);
+      n = { ...n, queue: n.queue.slice(1) };
       n = checkAch(n);
       if (choice.fx.end === 'exit') {
-        const val = valuation(n) * 1.2;
-        n = { ...n, phase: 'over', outcome: makeOutcome(n, 'exit', val) };
+        const val = Math.round(valuation(n) * 1.2);
+        n = { ...n, history: [...n.history, val], phase: 'over', outcome: makeOutcome(n, 'exit', val) };
       }
       return n;
     }
@@ -423,7 +535,7 @@ export function reducer(s: GameState, a: Action): GameState {
       if (!s.researched.includes(d.tech)) return s;
       if (s.products.some((p) => p.def === a.def)) return s;
       if (inDev >= 2 || s.funds < d.devCost) return s;
-      let n: GameState = { ...s, ap: s.ap - 1, funds: +(s.funds - d.devCost).toFixed(1), products: [...s.products, { uid: s.seq + 7, def: a.def, progress: 0, launched: false }] };
+      let n: GameState = { ...s, ap: s.ap - 1, funds: +(s.funds - d.devCost).toFixed(1), products: [...s.products, { uid: s.seq + 7, def: a.def, progress: 0, launched: false, level: 1 }] };
       n = mkLog(n, 'company', `立项开发「${d.name}」，投入 ${d.devCost} 万，预计需要 ${Math.ceil(effWork(n, d) / devSpeed(n))} 个季度。`);
       return n;
     }
@@ -456,6 +568,46 @@ export function reducer(s: GameState, a: Action): GameState {
       n = mkLog(n, 'person', `${p.name} 出任公司战略顾问（年薪 ${p.hireCost} 万）：「${p.buffName}」—— ${p.buffDesc}。`);
       n = toast(n, `顾问加盟：${p.name}`, 'good');
       return n;
+    }
+
+    /* 过桥贷款：破产边缘的救命钱（仅在资金 <30 万时可借） */
+    case 'TAKE_LOAN': {
+      if (s.phase !== 'play' || s.ap <= 0 || s.queue.length > 0) return s;
+      if (s.funds >= 30 || s.loanTurns > 0) return s;
+      let n: GameState = { ...s, ap: s.ap - 1, funds: +(s.funds + 30).toFixed(1), loanTurns: 6 };
+      n = mkLog(n, 'company', '从信托投资公司拿到 30 万过桥贷款！此后 6 个季度每季度自动还款 7 万（合计 42 万）。信用是第二次生命，且用且珍惜。');
+      return toast(n, '过桥贷款到账 +30 万', 'good');
+    }
+
+    /* 机房扩容：提升用户容量 */
+    case 'UPGRADE_SERVERS': {
+      const cost = serverUpgradeCost(s);
+      if (s.phase !== 'play' || s.ap <= 0 || s.queue.length > 0) return s;
+      if (!cost || s.funds < cost) return s;
+      let n: GameState = { ...s, ap: s.ap - 1, funds: +(s.funds - cost).toFixed(1), servers: s.servers + 1 };
+      n = mkLog(n, 'company', `机房升级为「${SERVER_TIERS[n.servers].name}」，用户容量提升至 ${capacityOf(n)} 万。风扇声都变好听了。`);
+      return toast(n, `机房升级：${SERVER_TIERS[n.servers].name}`, 'good');
+    }
+
+    /* 产品升级：已上线产品最高 Lv.3，每级收入 +30% */
+    case 'UPGRADE_PRODUCT': {
+      if (s.phase !== 'play' || s.ap <= 0 || s.queue.length > 0) return s;
+      const p = s.products.find((x) => x.uid === a.uid);
+      if (!p || !p.launched || p.level >= 3) return s;
+      const cost = productUpgradeCost(p.level);
+      if (s.funds < cost) return s;
+      const d = productDef(p.def);
+      let n: GameState = { ...s, ap: s.ap - 1, funds: +(s.funds - cost).toFixed(1), products: s.products.map((x) => (x.uid === a.uid ? { ...x, level: x.level + 1 } : x)) };
+      n = mkLog(n, 'company', `产品「${d.name}」迭代至 Lv.${p.level + 1}（投入 ${cost} 万），季度收入 +30%。`);
+      return toast(n, `${d.name} 升级至 Lv.${p.level + 1}`, 'good');
+    }
+
+    /* 融资确认到账 */
+    case 'ACCEPT_RAISE': {
+      if (s.phase !== 'play' || s.queue.length > 0) return s;
+      let n: GameState = { ...s, funds: +(s.funds + a.offer.amount).toFixed(1), equity: Math.max(5, s.equity - a.offer.share) };
+      n = mkLog(n, 'company', `${a.offer.investor} 的投资款 ${a.offer.amount} 万到账，出让 ${a.offer.share}% 股权。账上现有 ${n.funds.toFixed(1)} 万，创始人持股 ${n.equity}%。`);
+      return toast(n, `融资到账 +${a.offer.amount} 万`, 'good');
     }
 
     default:

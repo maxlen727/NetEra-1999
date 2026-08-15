@@ -82,6 +82,8 @@ export interface ProductInst {
   progress: number;
   launched: boolean;
   launchedTurn?: number;
+  /** 产品等级 1-3，升级提高收益 */
+  level: number;
 }
 
 export interface LogEntry {
@@ -96,6 +98,11 @@ export interface Toast {
   text: string;
   kind: 'info' | 'good' | 'bad' | 'era' | 'ach';
 }
+
+export type Difficulty = 'easy' | 'normal' | 'hard';
+
+/** 资金不足时被延后的历史人物事件 */
+export interface DeferredEv { id: string; n: number }
 
 export interface Outcome {
   type: 'final' | 'bankrupt' | 'exit';
@@ -113,6 +120,8 @@ export interface GameState {
   turn: number; // 0..47
   name: string;
   track: string;
+  difficulty: Difficulty;
+  perk: string | null;
   funds: number;
   users: number;
   fame: number;
@@ -120,6 +129,12 @@ export interface GameState {
   ap: number;
   apMax: number;
   debt: number;
+  /** 过桥贷款剩余还款期数（每期还 7 万） */
+  loanTurns: number;
+  /** 机房等级索引（SERVER_TIERS） */
+  servers: number;
+  /** 因资金不足延后的人物事件 */
+  deferred: DeferredEv[];
   policies: string[];
   researched: string[];
   /** 当前主攻研发的技术 id */
@@ -144,7 +159,7 @@ export interface GameState {
 }
 
 export type Action =
-  | { type: 'NEW_GAME'; name: string; track: string }
+  | { type: 'NEW_GAME'; name: string; track: string; difficulty?: string; perk?: string | null }
   | { type: 'LOAD_GAME'; state: GameState }
   | { type: 'BOOT_DONE' }
   | { type: 'END_TURN' }
@@ -154,6 +169,10 @@ export type Action =
   | { type: 'SET_RESEARCH'; id: string }
   | { type: 'TOGGLE_POLICY'; id: string }
   | { type: 'HIRE_ADVISOR'; person: string }
+  | { type: 'TAKE_LOAN' }
+  | { type: 'UPGRADE_SERVERS' }
+  | { type: 'UPGRADE_PRODUCT'; uid: number }
+  | { type: 'ACCEPT_RAISE'; offer: { investor: string; share: number; amount: number } }
   | { type: 'TOAST_GONE'; id: number }
   | { type: 'BANNER_GONE' }
   | { type: 'RESTART' };

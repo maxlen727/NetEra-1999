@@ -11,6 +11,7 @@ const SAVE_KEY = 'wangshi1999_save_v1';
 
 const bootState: GameState = {
   phase: 'boot', turn: 0, name: '', track: 'tr_portal',
+  difficulty: 'normal', perk: null, loanTurns: 0, servers: 0, deferred: [],
   funds: 0, users: 0, fame: 0, team: 3, ap: 3, apMax: 3, debt: 0,
   policies: [], researched: ['t_bbs'], cur: null, prog: {}, techPts: 0, equity: 100,
   products: [], rel: {}, met: [], advisors: [], flags: {}, log: [], queue: [],

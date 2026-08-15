@@ -1,7 +1,9 @@
 import { useMemo, useState } from 'react';
+import { DIFFICULTIES, RIVAL_CURVES, SERVER_TIERS } from '../game/data';
 import {
   ERAS, PERSONS, POLICIES, PRODUCTS, TECHS, TOTAL_TURNS, eraOf, findEvent, fmtVal, fmtW,
   organicGrowth, personDef, productDef, quarterReport, raiseOffer, acceptRaise, researchSpeed, techDef, turnLabel, valuation,
+  choiceCost, productUpgradeCost, serverUpgradeCost, rivalVal,
 } from '../game/engine';
 import type { Action, GameState } from '../game/types';
 import { Btn, Icons, Spark, Win } from './ui';
@@ -111,12 +113,31 @@ export function CompanyPanel({ s, d }: { s: GameState; d: DP }) {
             <span className="font-term text-base text-[var(--portal)]">{fmtVal(valuation(s))}</span>
           </div>
           <Spark data={s.history} w={230} h={40} />
-          <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 mt-1.5 text-[11px]">
-            <div>本季收入 <b className="text-[var(--money)]">+{rep.revenue.toFixed(1)}</b></div>
-            <div>运维成本 <b className="text-[var(--alert)]">−{rep.upkeep.toFixed(1)}</b></div>
-            <div>人力成本 <b className="text-[var(--alert)]">−{rep.salary.toFixed(1)}</b>（{s.team}人）</div>
-            <div>创始人持股 <b>{s.equity}%</b></div>
+          <div className="mt-1.5 text-[11px] space-y-0.5">
+            {rep.rows.length === 0 && <div className="text-[#8a867a]">尚无产品收入 —— 先立项一款产品吧</div>}
+            {rep.rows.map((r) => (
+              <div key={r.name} className="flex justify-between">
+                <span>{r.name}{r.level > 1 && <b className="text-[#b34a00]"> Lv.{r.level}</b>}</span>
+                <b className="text-[var(--money)]">+{r.val.toFixed(1)}</b>
+              </div>
+            ))}
+            <div className="flex justify-between border-t border-[#d8d4c6] pt-0.5 mt-0.5"><span>人力成本（{s.team} 人）</span><b className="text-[var(--alert)]">−{rep.salary.toFixed(1)}</b></div>
+            <div className="flex justify-between"><span>服务器 / 带宽运维</span><b className="text-[var(--alert)]">−{rep.upkeep.toFixed(1)}</b></div>
+            <div className="flex justify-between border-t border-[#d8d4c6] pt-0.5 mt-0.5 font-bold"><span>净现金流</span><b style={{ color: rep.net >= 0 ? 'var(--money)' : 'var(--alert)' }}>{rep.net >= 0 ? '+' : ''}{rep.net.toFixed(1)} 万</b></div>
+            <div className="flex justify-between"><span>创始人持股</span><b>{s.equity}%</b></div>
           </div>
+        </div>
+
+        <div className="bevel-in bg-white p-2">
+          <div className="flex justify-between items-baseline mb-1">
+            <span className="font-bold text-[var(--navy-1)] text-[11px]">机房 · {SERVER_TIERS[s.servers].name}</span>
+            <span className={`font-term text-sm ${rep.overloaded ? 'text-[var(--alert)]' : 'text-[#5a5750]'}`}>{fmtW(s.users)} / {rep.capacity}万</span>
+          </div>
+          <div className="progress98">
+            <i style={{ width: `${Math.min(100, (s.users / rep.capacity) * 100)}%`, background: rep.overloaded ? 'repeating-linear-gradient(90deg,#c8322b 0 8px,#e0705e 8px 16px)' : undefined }} />
+          </div>
+          {rep.overloaded && <div className="text-[10px] text-[var(--alert)] font-bold mt-1">服务器过载！收入 −25%、增长减半，快去「行动」升级机房</div>}
+          {s.loanTurns > 0 && <div className="text-[10px] text-[#b34a00] mt-1">过桥贷款还款中：每季 −7 万，剩余 {s.loanTurns} 期</div>}
         </div>
 
         <div>
@@ -131,11 +152,18 @@ export function CompanyPanel({ s, d }: { s: GameState; d: DP }) {
                   <div className="flex justify-between items-baseline">
                     <b>{def.name}</b>
                     {p.launched
-                      ? <span className="font-term text-[var(--money)]">+{((def.base + s.users * def.ucoef) * eraOf(s.turn).mult).toFixed(1)}/季</span>
+                      ? <span className="font-term text-[var(--money)]">+{(rep.rows.find((r) => r.name === def.name)?.val ?? 0).toFixed(1)}/季{p.level > 1 && <b className="text-[#b34a00] text-[10px]"> Lv.{p.level}</b>}</span>
                       : <span className="text-[10px] text-[#8a5a20]">开发中 {Math.floor(p.progress * 10) / 10}/{Math.round(effW * 10) / 10}</span>}
                   </div>
                   {!p.launched && <div className="progress98 mt-1"><i style={{ width: `${Math.min(100, (p.progress / effW) * 100)}%` }} /></div>}
-                  {p.launched && <div className="text-[10.5px] text-[#5a5750] mt-0.5">{def.desc}</div>}
+                  {p.launched && (
+                    <div className="flex items-center gap-1.5 mt-1">
+                      <span className="text-[10px] text-[#5a5750] flex-1 leading-tight">{def.desc}</span>
+                      {p.level < 3
+                        ? <Btn small disabled={s.ap <= 0 || s.queue.length > 0 || s.funds < productUpgradeCost(p.level)} onClick={() => d({ type: 'UPGRADE_PRODUCT', uid: p.uid })}>迭代 · {productUpgradeCost(p.level)}万</Btn>
+                        : <span className="text-[10px] font-bold text-[#b34a00]">满级</span>}
+                    </div>
+                  )}
                 </div>
               );
             })}
@@ -298,6 +326,9 @@ export function ActionsPanel({ s, d }: { s: GameState; d: DP }) {
       <div className="p-2 flex-1 min-h-0 flex flex-col gap-2">
         {mode === 'none' && (
           <div className="grid grid-cols-3 gap-1.5 text-xs">
+            <ABtn title={s.loanTurns > 0 ? `还款中，剩余 ${s.loanTurns} 期` : '资金低于 30 万可借 30 万过桥贷款续命，此后 6 个季度每季自动还 7 万'} disabled={busy || noAp || s.funds >= 30 || s.loanTurns > 0} onClick={() => d({ type: 'TAKE_LOAN' })}>
+              {Icons.coin(15)} <span className={s.funds < 0 ? 'text-[var(--alert)]' : ''}>紧急融资</span> <i className="not-italic text-[10px] text-[#5a5750]">{s.loanTurns > 0 ? `还款中 · 剩${s.loanTurns}期` : '1 点 · 借 30 万'}</i>
+            </ABtn>
             <ABtn title={s.cur ? '加速当前研发 +3 点进度' : '先在「研发实验室」点击一项技术设为主攻方向'} disabled={busy || noAp || !s.cur} onClick={() => d({ type: 'ACT', kind: 'research' })}>
               {Icons.flask(15)} 研发推进 <i className="not-italic text-[10px] text-[#5a5750]">1 行动点</i>
             </ABtn>
@@ -306,6 +337,9 @@ export function ActionsPanel({ s, d }: { s: GameState; d: DP }) {
             </ABtn>
             <ABtn title="招聘一名员工（提升研发与开发速度，增加行动点上限）" disabled={busy || noAp || s.funds < 8 || s.team >= 30} onClick={() => d({ type: 'ACT', kind: 'hire' })}>
               {Icons.users(15)} 招兵买马 <i className="not-italic text-[10px] text-[#5a5750]">1 点 + ¥8万</i>
+            </ABtn>
+            <ABtn title={`当前机房：${SERVER_TIERS[s.servers].name}（容量 ${SERVER_TIERS[s.servers].cap} 万用户）。用户超容量时收入 −25%、增长减半`} disabled={busy || noAp || !serverUpgradeCost(s) || s.funds < serverUpgradeCost(s)} onClick={() => d({ type: 'UPGRADE_SERVERS' })}>
+              {Icons.chip(15)} 机房扩容 <i className="not-italic text-[10px] text-[#5a5750]">{serverUpgradeCost(s) ? `1 点 + ¥${serverUpgradeCost(s)}万` : '已是顶配'}</i>
             </ABtn>
             <ABtn title="用已掌握的技术立项新产品（同时在研最多 2 个）" disabled={busy || noAp || buildable.length === 0 || inDev >= 2 || s.funds < Math.min(...buildable.map((b) => b.devCost), 999)} onClick={() => setMode('build')}>
               {Icons.hammer(15)} 立项开发 <i className="not-italic text-[10px] text-[#5a5750]">1 点 + 开发费</i>
@@ -407,12 +441,15 @@ export function EventDialog({ s, d }: { s: GameState; d: DP }) {
             )}
             <div className="space-y-1.5 pt-1">
               {ev.choices.map((c, i) => {
-                const cant = (c.cost ?? 0) > s.funds;
+                const pay = choiceCost(c);
+                const cant = pay > s.funds;
                 return (
                   <button key={i} disabled={cant} onClick={() => d({ type: 'RESOLVE_EVENT', idx: i })}
                     className="btn98 w-full text-left px-3 py-2 text-sm disabled:opacity-40 hover:brightness-105 transition-all hover:-translate-y-px">
                     <span className="font-bold">{c.label}</span>
-                    {c.hint && <span className="ml-2 text-[11px] text-[#5a5750]">{c.hint}{cant ? '（资金不足）' : ''}</span>}
+                    {pay > 0 && <span className="ml-2 font-term text-[var(--portal)]">−{pay}万</span>}
+                    {c.hint && <span className="ml-2 text-[11px] text-[#5a5750]">{c.hint}</span>}
+                    {cant && <span className="ml-2 text-[11px] font-bold text-[var(--alert)]">（资金不足）</span>}
                   </button>
                 );
               })}
@@ -435,7 +472,29 @@ export function Taskbar({ s, d, onHelp }: { s: GameState; d: DP; onHelp: () => v
       <div className="bevel-in bg-white px-2 py-1 text-[11px] hidden md:block text-[#5a5750]">
         {waiting ? '有时代事件待处理…' : s.ap > 0 ? `剩余 ${s.ap} 点行动点，花完再结束回合更划算` : '行动点用完了，进入下一季度吧'}
       </div>
-      <div className="ml-auto flex items-center gap-2">
+      <div className="flex-1 min-w-0 hidden sm:flex items-center gap-2 bg-[#101418] px-2 py-1 overflow-hidden" title="对手估值行情（百万元）">
+        <span className="font-disp text-[11px] shrink-0 text-[#e8c15a]">对手观察</span>
+        <div className="relative flex-1 overflow-hidden">
+          <div className="marquee-track flex w-max whitespace-nowrap font-term text-sm text-[#9fb4a8]">
+            {[0, 1].map((k) => (
+              <span key={k} className="flex gap-6 pr-6">
+                {RIVAL_CURVES.map((rv) => {
+                  const v = rivalVal(rv, s.turn);
+                  const up = v >= rivalVal(rv, Math.max(0, s.turn - 1));
+                  return (
+                    <span key={rv.name} className="flex items-center gap-1.5">
+                      <i className="w-2 h-2 inline-block" style={{ background: rv.color }} />
+                      {rv.name} {fmtVal(v)}
+                      <span style={{ color: up ? '#5ec98a' : '#e0705e' }}>{up ? '▲' : '▼'}</span>
+                    </span>
+                  );
+                })}
+              </span>
+            ))}
+          </div>
+        </div>
+      </div>
+      <div className="ml-auto flex items-center gap-2 shrink-0">
         <div className="bevel-in bg-white px-2 py-1 flex items-center gap-1.5 text-[11px]">
           <span className="text-[var(--navy-1)]">{Icons.clock(12)}</span>
           <span className="font-term text-sm">{turnLabel(s.turn)}</span>

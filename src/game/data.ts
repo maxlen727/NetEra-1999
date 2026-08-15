@@ -41,6 +41,62 @@ export const TRACKS = [
     desc: '在义乌和广州跑过货源，你断定「网上买卖」是下一个金矿。',
     bonus: '开局资金 +25 万', funds: 85, fame: 5, users: 0, techBoost: ['t_pay', 2] as [string, number],
   },
+  {
+    id: 'tr_tel', name: '电信老兵', icon: 'chip',
+    desc: '在省邮电局干了八年，移动梦网的每一条规则你都门儿清。',
+    bonus: '资金略高 · WAP 手机站技术有积累', funds: 68, fame: 6, users: 0, techBoost: ['t_wap', 2] as [string, number],
+  },
+  {
+    id: 'tr_hack', name: '车库黑客', icon: 'bolt',
+    desc: '和两个兄弟在车库写代码，你的小工具已经悄悄圈了一票粉丝。',
+    bonus: '开局用户 +2 万 · IM 技术有积累', funds: 50, fame: 4, users: 2, techBoost: ['t_im', 2] as [string, number],
+  },
+];
+
+/* ================= 难度 ================= */
+export const DIFFICULTIES = [
+  {
+    id: 'easy' as const, name: '休闲模式', tag: '顺风局',
+    desc: '启动资金 ×1.5 · 工资开销 −20% · 收入 +15% · 用户增长 +20% · 破产线更宽容。适合想轻松看剧情的人。',
+    fundsMult: 1.5, salaryMult: 0.8, revMult: 1.15, growthMult: 1.2, bankruptAt: -50, techPts: 1,
+  },
+  {
+    id: 'normal' as const, name: '标准模式', tag: '原汁原味',
+    desc: '1999 年的真实体感：钱永远不够花，冬天说来就来，每一步都得掂量。',
+    fundsMult: 1, salaryMult: 1, revMult: 1, growthMult: 1, bankruptAt: -30, techPts: 0,
+  },
+  {
+    id: 'hard' as const, name: '硬核模式', tag: '地狱开局',
+    desc: '启动资金 ×0.75 · 工资开销 +25% · 收入 −15% · 增长 −25% · 资金 −20 万即破产。泡沫会教你做人。',
+    fundsMult: 0.75, salaryMult: 1.25, revMult: 0.85, growthMult: 0.75, bankruptAt: -20, techPts: 0,
+  },
+];
+
+/* ================= 穿越物资（开局五选一） ================= */
+export const PERKS = [
+  { id: 'perk_angel', name: '天使汇款', desc: '一位海外亲戚汇来 25 万启动资金，代价是让出 5% 股权。', tag: '资金 +25 · 股权 −5' },
+  { id: 'perk_veteran', name: '老销售入伙', desc: '跑过十年渠道的老销售带着客户名单入伙。', tag: '团队 +1 · 声望 +2' },
+  { id: 'perk_media', name: '媒体关系', desc: '你表舅是晚报主编，开业报道直接上头版。', tag: '声望 +6' },
+  { id: 'perk_server', name: '机房渠道', desc: '你提前托人搞定了电信机房，跳过共享主机阶段。', tag: '机房直升「自建机房」' },
+  { id: 'perk_code', name: '技术手稿', desc: '你带来一摞写满架构设计的手稿，研发快人一步。', tag: '技术储备 +2' },
+];
+
+/* ================= 机房层级（决定用户容量） ================= */
+export const SERVER_TIERS = [
+  { name: '共享主机托管', cap: 20, cost: 0 },
+  { name: '自建机房', cap: 80, cost: 20 },
+  { name: 'IDC 托管机柜', cap: 200, cost: 50 },
+  { name: '自有数据中心', cap: 600, cost: 130 },
+  { name: '国家级数据中心', cap: 1500, cost: 300 },
+];
+
+/* ================= 对手估值行情（转折点 [回合, 估值]，线性插值） ================= */
+export const RIVAL_CURVES: { name: string; color: string; pts: [number, number][] }[] = [
+  { name: '腾讯', color: '#1fa9e6', pts: [[0, 4], [5, 15], [9, 40], [13, 150], [21, 520], [26, 1200], [33, 2200], [40, 3200], [47, 4200]] },
+  { name: '百度', color: '#3155c9', pts: [[0, 0], [4, 2], [13, 80], [21, 300], [26, 2400], [33, 3000], [47, 3200]] },
+  { name: '阿里巴巴', color: '#ff8a00', pts: [[0, 0], [2, 1], [8, 30], [21, 400], [26, 800], [34, 1300], [47, 1300]] },
+  { name: '盛大', color: '#7a4fd0', pts: [[0, 0], [11, 30], [15, 640], [24, 600], [33, 480], [47, 300]] },
+  { name: '网易', color: '#c93a5e', pts: [[0, 2], [5, 1], [10, 3], [18, 520], [33, 500], [47, 540]] },
 ];
 
 export const TECHS: TechDef[] = [
