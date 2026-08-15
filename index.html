@@ -2,7 +2,7 @@
 <html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>网事1999 · 中国互联网编年史</title>
     <link rel="icon" type="image/png" sizes="64x64" href="/NetEra-1999/favicon.png" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -15,5 +15,28 @@
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
+    <script>
+      (() => {
+        const enterLandscapeGame = async () => {
+          try {
+            if (document.fullscreenEnabled && !document.fullscreenElement) {
+              await document.documentElement.requestFullscreen({ navigationUI: 'hide' });
+            }
+          } catch (_) {}
+          try {
+            if (screen.orientation?.lock) await screen.orientation.lock('landscape');
+          } catch (_) {}
+        };
+
+        document.addEventListener('click', (event) => {
+          const button = event.target?.closest?.('button');
+          if (!button) return;
+          const text = button.textContent || '';
+          if (text.includes('穿越开局') || text.includes('读取上次存档')) {
+            void enterLandscapeGame();
+          }
+        }, true);
+      })();
+    </script>
   </body>
 </html>
