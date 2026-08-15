@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
-import { DIFFICULTIES, RIVAL_CURVES, SERVER_TIERS } from '../game/data';
+import { DIFFICULTIES, OPS_ACTIONS, PRICE_MODES, RIVAL_CURVES, SERVER_TIERS } from '../game/data';
 import { isMuted, setMuted, sfx } from '../game/sfx';
 import {
   ERAS, PERSONS, POLICIES, PRODUCTS, TECHS, TOTAL_TURNS, eraOf, findEvent, fmtVal, fmtW,
   organicGrowth, personDef, productDef, quarterReport, raiseOffer, acceptRaise, researchSpeed, techDef, turnLabel, valuation,
-  choiceCost, productUpgradeCost, serverUpgradeCost, rivalVal,
+  choiceCost, productUpgradeCost, serverUpgradeCost, rivalVal, nextResearchable, productIncome, priceMode, opsDef,
 } from '../game/engine';
 import type { Action, GameState } from '../game/types';
 import { Btn, Icons, Spark, Win } from './ui';
@@ -58,11 +58,31 @@ export function ResourceBar({ s, d }: { s: GameState; d: DP }) {
         <span className="text-[#e8a400]">{Icons.star(14)}</span>
         <span className="font-term text-xl leading-none">{Math.round(s.fame)}</span>
       </div>
-      <div className={chip} title="当前研发">
+      <div className={chip} title={s.cur ? '当前主攻研发方向（点科技树可更换）' : '下一个可研发课题（点科技树设为主攻）'}>
         <span className="text-[var(--navy-1)]">{Icons.flask(14)}</span>
         <div className="leading-tight">
-          <span className="text-xs font-bold">{s.cur ? techDef(s.cur).name : '未立项'}</span>
-          {s.cur && <span className="block font-term text-sm leading-none">{Math.min(Math.round(s.prog[s.cur] || 0), techDef(s.cur).cost)}/{techDef(s.cur).cost}</span>}
+          {(() => {
+            const curId = s.cur;
+            const cur = curId ? techDef(curId) : null;
+            const sug = nextResearchable(s);
+            if (cur && curId) {
+              const prog = Math.min(Math.round(s.prog[curId] || 0), cur.cost);
+              return (
+                <>
+                  <span className="text-xs font-bold">{cur.name}</span>
+                  <span className="block font-term text-sm leading-none">{prog}/{cur.cost}</span>
+                </>
+              );
+            }
+            return sug ? (
+              <>
+                <span className="text-xs font-bold text-[#b34a00]">待立项 · {sug.name}</span>
+                <span className="block text-[10px] leading-none text-[#8a5a20]">点科技树设主攻</span>
+              </>
+            ) : (
+              <span className="text-xs font-bold text-[var(--money)]">科技全满 ✓</span>
+            );
+          })()}
         </div>
       </div>
       <div className={chip} title="估值（万元）">
@@ -177,14 +197,59 @@ export function CompanyPanel({ s, d }: { s: GameState; d: DP }) {
                       : <span className="text-[10px] text-[#8a5a20]">开发中 {Math.floor(p.progress * 10) / 10}/{Math.round(effW * 10) / 10}</span>}
                   </div>
                   {!p.launched && <div className="progress98 mt-1"><i style={{ width: `${Math.min(100, (p.progress / effW) * 100)}%` }} /></div>}
-                  {p.launched && (
-                    <div className="flex items-center gap-1.5 mt-1">
-                      <span className="text-[10px] text-[#5a5750] flex-1 leading-tight">{def.desc}</span>
-                      {p.level < 3
-                        ? <Btn small disabled={s.ap <= 0 || s.queue.length > 0 || s.funds < productUpgradeCost(p.level)} onClick={() => d({ type: 'UPGRADE_PRODUCT', uid: p.uid })}>迭代 · {productUpgradeCost(p.level)}万</Btn>
-                        : <span className="text-[10px] font-bold text-[#b34a00]">满级</span>}
-                    </div>
-                  )}
+                  {p.launched && (() => {
+                    const heat = p.heat || 0;
+                    const isHit = heat >= 80;
+                    const busy = s.ap <= 0 || s.queue.length > 0;
+                    return (
+                      <div className="mt-1.5 space-y-1.5">
+                        {/* 运营热度 */}
+                        <div>
+                          <div className="flex justify-between items-baseline text-[10px] mb-0.5">
+                            <span className={`font-bold flex items-center gap-1 ${isHit ? 'text-[var(--alert)]' : 'text-[#5a5750]'}`}>
+                              <span className={isHit ? 'animate-pulse' : ''}>🔥</span> 热度 {heat}
+                              {isHit && <b className="text-[var(--portal)]">爆款!</b>}
+                            </span>
+                            <span className="text-[#8a867a]">{priceMode(p).name}定价 · 收入×{priceMode(p).incomeMult} 拉新×{priceMode(p).pullMult}</span>
+                          </div>
+                          <div className="progress98 !h-2.5">
+                            <i style={{ width: `${heat}%`, background: isHit ? 'repeating-linear-gradient(90deg,#ff6a00 0 8px,#ffb347 8px 16px)' : heat >= 40 ? 'repeating-linear-gradient(90deg,#e8a400 0 8px,#f5c76a 8px 16px)' : undefined }} />
+                          </div>
+                        </div>
+                        {/* 定价策略 */}
+                        <div className="flex items-center gap-1">
+                          <span className="text-[10px] text-[#8a867a] shrink-0">定价</span>
+                          {PRICE_MODES.map((m) => (
+                            <button key={m.id} title={m.desc} onClick={() => d({ type: 'SET_PRICE', uid: p.uid, price: m.id })}
+                              className={`flex-1 text-[10px] font-bold py-0.5 border transition-all ${p.price === m.id ? 'bg-[var(--navy-1)] text-white border-[var(--navy-1)]' : 'btn98'}`}>
+                              {m.name}
+                            </button>
+                          ))}
+                        </div>
+                        {/* 运营动作 */}
+                        <div className="flex items-center gap-1">
+                          {OPS_ACTIONS.map((op) => (
+                            <button key={op.kind} title={`${op.desc}（耗 1 行动点）`}
+                              disabled={busy || s.funds < op.cost}
+                              onClick={() => d({ type: 'OPS', uid: p.uid, kind: op.kind })}
+                              className="btn98 flex-1 text-[10px] font-bold py-0.5 disabled:opacity-40">
+                              {op.name} ·{op.cost}万
+                            </button>
+                          ))}
+                          {p.level < 3 ? (
+                            <button title="版本迭代，季度收入 +30%（耗 1 行动点）"
+                              disabled={busy || s.funds < productUpgradeCost(p.level)}
+                              onClick={() => d({ type: 'UPGRADE_PRODUCT', uid: p.uid })}
+                              className="btn98 flex-1 text-[10px] font-bold py-0.5 disabled:opacity-40">
+                              迭代 ·{productUpgradeCost(p.level)}万
+                            </button>
+                          ) : (
+                            <span className="flex-1 text-center text-[10px] font-bold text-[#b34a00] py-0.5">满级</span>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })()}
                 </div>
               );
             })}
@@ -215,6 +280,10 @@ export function TechPanel({ s, d }: { s: GameState; d: DP }) {
   return (
     <Win title="研发实验室 · Tech" icon={Icons.flask()} className="h-full" tone="orange">
       <div className="scroll-98 overflow-y-auto p-2 space-y-2 flex-1 min-h-0 text-xs">
+        <div className="bevel-in bg-white px-2 py-1.5 flex items-center justify-between">
+          <span className="font-bold text-[var(--navy-1)]">已研发 <b className="font-term text-base text-[var(--portal)]">{s.researched.length}</b>/{TECHS.length} 项技术</span>
+          <span className="text-[10px] text-[#8a867a]">{s.cur ? `主攻：${techDef(s.cur).name}` : '点下方技术设主攻'}</span>
+        </div>
         {ERAS.map((era) => (
           <div key={era.id}>
             <div className="font-disp text-[13px] text-[var(--navy-1)] border-b border-[#c9c5b8] mb-1 flex justify-between">
@@ -232,15 +301,23 @@ export function TechPanel({ s, d }: { s: GameState; d: DP }) {
                     disabled={done || !reqOk}
                     onClick={() => d({ type: 'SET_RESEARCH', id: t.id })}
                     title={done ? '已完成' : reqOk ? `${t.desc}（点击设为主攻方向）` : `需要前置：${[...(t.req || []), ...(t.reqAny ? [`任一：${t.reqAny.map((r) => techDef(r).name)}`] : [])].map((r) => (t.reqAny ? r : techDef(r).name)).join('、')}`}
-                    className={`w-full text-left bevel-in p-1.5 transition-transform hover:-translate-y-px ${done ? 'bg-[#eaf6ee]' : isCur ? 'bg-[#e8f1fd]' : reqOk ? 'bg-white cursor-pointer' : 'bg-[#e5e2d6] opacity-55'}`}
+                    className={`w-full text-left bevel-in p-1.5 transition-transform hover:-translate-y-px ${done ? 'bg-[#eaf6ee] border-[var(--money)]' : isCur ? 'bg-[#e8f1fd] border-[var(--navy-1)] shadow-[2px_2px_0_rgba(20,60,120,0.25)]' : reqOk ? 'bg-white cursor-pointer' : 'bg-[#e5e2d6] opacity-55'}`}
                   >
                     <div className="flex justify-between items-baseline">
-                      <b className={done ? 'text-[var(--money)]' : isCur ? 'text-[var(--navy-1)]' : ''}>{done ? '✓ ' : ''}{t.name}</b>
-                      <span className="font-term text-[#5a5750]">{done ? 'DONE' : `${Math.round(prog)}/${t.cost}`}</span>
+                      <b className={done ? 'text-[var(--money)]' : isCur ? 'text-[var(--navy-1)]' : ''}>
+                        {done ? '✓ ' : isCur ? '▸ ' : ''}{t.name}
+                        {isCur && !done && <span className="text-[9px] font-normal text-[var(--navy-1)] ml-1">主攻中</span>}
+                      </b>
+                      <span className={`font-term ${done ? 'text-[var(--money)]' : 'text-[#5a5750]'}`}>{done ? 'DONE' : `${Math.round(prog)}/${t.cost}`}</span>
                     </div>
-                    {isCur && <div className="progress98 mt-1"><i style={{ width: `${(prog / t.cost) * 100}%` }} /></div>}
+                    {isCur && !done && <div className="progress98 mt-1"><i style={{ width: `${(prog / t.cost) * 100}%` }} /></div>}
                     <div className="text-[10px] text-[#5a5750] leading-tight mt-0.5">
-                      {t.desc}{t.unlocks && !done && <span className="text-[var(--portal)]"> → 解锁「{productDef(t.unlocks).name}」</span>}
+                      {t.desc}
+                      {t.unlocks && (
+                        <span className={done ? 'text-[var(--money)] font-bold' : 'text-[var(--portal)]'}>
+                          {done ? ' · 已解锁' : ' → 解锁'}「{productDef(t.unlocks).name}」
+                        </span>
+                      )}
                     </div>
                   </button>
                 );

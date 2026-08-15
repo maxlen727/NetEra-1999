@@ -1,8 +1,8 @@
 import {
-  ACHIEVEMENTS, DIFFICULTIES, ERAS, EVENTS, HISTORICAL_BOARD, PERKS, PERSONS, POLICIES,
-  PRODUCTS, RANDOMS, RANKS, RIVAL_CURVES, SERVER_TIERS, TECHS, TOTAL_TURNS, TRACKS, eraOf, turnLabel,
+  ACHIEVEMENTS, DIFFICULTIES, ERAS, EVENTS, HISTORICAL_BOARD, OPS_ACTIONS, PERKS, PERSONS, POLICIES,
+  PRICE_MODES, PRODUCTS, RANDOMS, RANKS, RIVAL_CURVES, SERVER_TIERS, TECHS, TOTAL_TURNS, TRACKS, eraOf, turnLabel,
 } from './data';
-import type { Action, Choice, GameEvent, GameState, Outcome, ProductDef } from './types';
+import type { Action, Choice, GameEvent, GameState, Outcome, PriceMode, ProductDef, ProductInst } from './types';
 
 /* ---------------- 工具 ---------------- */
 export const fmtW = (v: number, unit = '万') => {
@@ -19,6 +19,19 @@ const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v
 export const productDef = (id: string): ProductDef => PRODUCTS.find((p) => p.id === id)!;
 export const techDef = (id: string) => TECHS.find((t) => t.id === id)!;
 export const personDef = (id: string) => PERSONS.find((p) => p.id === id)!;
+
+/** 某项技术的前置条件是否满足 */
+function techReqOk(s: GameState, t: (typeof TECHS)[number]) {
+  return (
+    (!t.req || t.req.every((r) => s.researched.includes(r))) &&
+    (!t.reqAny || t.reqAny.some((r) => s.researched.includes(r)))
+  );
+}
+
+/** 下一个可研发的技术（未研发且前置满足），用于研发接力与顶部提示 */
+export function nextResearchable(s: GameState) {
+  return TECHS.find((t) => !s.researched.includes(t.id) && techReqOk(s, t)) ?? null;
+}
 
 const EV_ACQ: GameEvent = {
   id: 'ev_acq', turn: -1, kind: 'special',
@@ -59,6 +72,15 @@ export function serverUpgradeCost(s: GameState): number {
 export const productUpgradeCost = (level: number) => 12 + 10 * (level - 1);
 export const levelMult = (p: { level: number }) => 1 + 0.3 * ((p.level || 1) - 1);
 
+/** 定价策略查询（缺省按标准价） */
+export const priceMode = (p: { price?: PriceMode }) =>
+  PRICE_MODES.find((m) => m.id === (p.price ?? 'std')) ?? PRICE_MODES[1];
+/** 运营热度对收入的加成 */
+export const heatIncomeMult = (p: { heat?: number }) => 1 + (p.heat || 0) / 250;
+/** 运营热度对拉新的加成 */
+export const heatPullMult = (p: { heat?: number }) => 1 + (p.heat || 0) / 300;
+export const opsDef = (kind: 'ad' | 'content') => OPS_ACTIONS.find((o) => o.kind === kind)!;
+
 /** 对手估值行情：按回合线性插值（单位：百万元） */
 export function rivalVal(curve: { pts: [number, number][] }, turn: number): number {
   const pts = curve.pts;
@@ -78,7 +100,7 @@ export function valuation(s: GameState): number {
   v += s.researched.length * 6;
   for (const p of s.products) {
     const d = productDef(p.def);
-    v += p.launched ? d.devCost + d.base * 10 + ((p.level || 1) - 1) * 10 : d.devCost * 0.4;
+    v += p.launched ? d.devCost + d.base * 10 + ((p.level || 1) - 1) * 10 + (p.heat || 0) * 0.15 : d.devCost * 0.4;
   }
   v += s.servers * 20; // 机房资产
   v += eraOf(s.turn).id * 30;
@@ -91,11 +113,12 @@ export function valuation(s: GameState): number {
   return Math.round(v);
 }
 
-function productIncome(s: GameState, p: { def: string; level: number }): number {
+export function productIncome(s: GameState, p: ProductInst): number {
   const d = productDef(p.def);
   const diff = diffOf(s);
   const mult = eraOf(s.turn).mult;
-  let inc = (d.base + s.users * d.ucoef) * mult * diff.revMult * levelMult(p);
+  const pm = priceMode(p);
+  let inc = (d.base + s.users * d.ucoef) * mult * diff.revMult * levelMult(p) * pm.incomeMult * heatIncomeMult(p);
   if (has(s, 'p_free')) inc *= 0.9;
   if (adv(s, 'mayun')) inc *= 1.1;
   if (has(s, 'p_sp2') && (p.def === 'p_sp' || p.def === 'p_game')) inc *= 1.35;
@@ -143,7 +166,9 @@ export function researchSpeed(s: GameState) {
 }
 
 export function organicGrowth(s: GameState) {
-  const pull = s.products.filter((p) => p.launched).reduce((a, p) => a + productDef(p.def).pull, 0);
+  const pull = s.products
+    .filter((p) => p.launched)
+    .reduce((a, p) => a + productDef(p.def).pull * priceMode(p).pullMult * heatPullMult(p), 0);
   let g = (0.15 + s.fame * 0.04 + pull * 0.6) * Math.pow(eraOf(s.turn).mult, 0.8) * diffOf(s).growthMult;
   if (has(s, 'p_user')) g *= 1.4;
   if (has(s, 'p_free')) g *= 1.25;
@@ -179,6 +204,7 @@ export function newGame(name: string, trackId: string, difficultyId: string = 'n
   };
   const [tid, amt] = tr.techBoost;
   s.prog = { [tid]: amt };
+  s.cur = nextResearchable(s)?.id ?? null; // 默认锁定第一个可研发课题，顶部不再显示「未立项」
   /* 穿越物资 */
   const perkDef = PERKS.find((p) => p.id === perk);
   if (perk === 'perk_angel') { s.funds += 25; s.equity = 95; }
@@ -278,6 +304,13 @@ function endTurn(prev: GameState): GameState {
     }
   }
 
+  /* 1.5 运营热度自然衰减（每季 −20，热度需要持续运营维持） */
+  for (const p of s.products) {
+    if (p.launched && (p.heat || 0) > 0) {
+      p.heat = Math.max(0, (p.heat || 0) - 20);
+    }
+  }
+
   /* 2. 研发自动推进 + 存量技术点 */
   if (s.cur) {
     s.prog[s.cur] = (s.prog[s.cur] || 0) + researchSpeed(s) + s.techPts;
@@ -288,6 +321,11 @@ function endTurn(prev: GameState): GameState {
       s = mkLog(s, 'company', `技术突破：「${t.name}」研发完成！${t.unlocks ? `解锁产品「${productDef(t.unlocks).name}」` : ''}`);
       s = toast(s, `研发完成：${t.name}`, 'good');
       s.cur = null;
+      const nxt = nextResearchable(s);
+      if (nxt) {
+        s.cur = nxt.id;
+        s = mkLog(s, 'company', `研发团队自动转入下一课题「${nxt.name}」（可在科技树中改换方向）。`);
+      }
     }
   }
   // 未指定研发方向时，techPts 作为技术储备计入估值
@@ -433,7 +471,7 @@ export function reducer(s: GameState, a: Action): GameState {
     case 'LOAD_GAME': {
       /* 旧存档兼容：补齐新版本字段 */
       const st = a.state;
-      return {
+      const loaded: GameState = {
         ...st,
         difficulty: st.difficulty ?? 'normal',
         perk: st.perk ?? null,
@@ -442,10 +480,17 @@ export function reducer(s: GameState, a: Action): GameState {
         deferred: st.deferred ?? [],
         techPts: st.techPts ?? 0,
         cur: st.cur ?? null,
-        products: (st.products ?? []).map((p) => ({ ...p, level: (p as { level?: number }).level ?? 1 })),
+        products: (st.products ?? []).map((p) => ({
+          ...p,
+          level: (p as { level?: number }).level ?? 1,
+          price: (p as { price?: PriceMode }).price ?? 'std',
+          heat: (p as { heat?: number }).heat ?? 0,
+        })),
         queue: (st.queue ?? []).filter((qid) => !!findEvent(qid)),
         toasts: [], eraBanner: null,
       };
+      if (!loaded.cur) loaded.cur = nextResearchable(loaded)?.id ?? null;
+      return loaded;
     }
     case 'SKIP_EVENT': {
       if (!s.queue.length) return s;
@@ -493,7 +538,11 @@ export function reducer(s: GameState, a: Action): GameState {
       let n: GameState = { ...s, flags: { ...s.flags }, prog: { ...s.prog }, rel: { ...s.rel } };
       switch (a.kind) {
         case 'research': {
-          if (!n.cur) return s;
+          if (!n.cur) {
+            const nxt = nextResearchable(n);
+            if (!nxt) return toast(s, '暂无可研发的技术', 'bad');
+            n.cur = nxt.id; // 未设方向时自动锁定下一课题
+          }
           n.ap -= 1;
           n.prog[n.cur] = (n.prog[n.cur] || 0) + 3 * researchSpeed(n);
           const t = techDef(n.cur);
@@ -502,6 +551,8 @@ export function reducer(s: GameState, a: Action): GameState {
             n = mkLog(n, 'company', `技术突破：「${t.name}」研发完成！${t.unlocks ? `解锁「${productDef(t.unlocks).name}」` : ''}`);
             n = toast(n, `研发完成：${t.name}`, 'good');
             n.cur = null;
+            const nx = nextResearchable(n);
+            if (nx) n.cur = nx.id;
           }
           return checkAch(n);
         }
@@ -552,7 +603,7 @@ export function reducer(s: GameState, a: Action): GameState {
       if (!s.researched.includes(d.tech)) return s;
       if (s.products.some((p) => p.def === a.def)) return s;
       if (inDev >= 2 || s.funds < d.devCost) return s;
-      let n: GameState = { ...s, ap: s.ap - 1, funds: +(s.funds - d.devCost).toFixed(1), products: [...s.products, { uid: s.seq + 7, def: a.def, progress: 0, launched: false, level: 1 }] };
+      let n: GameState = { ...s, ap: s.ap - 1, funds: +(s.funds - d.devCost).toFixed(1), products: [...s.products, { uid: s.seq + 7, def: a.def, progress: 0, launched: false, level: 1, price: 'std', heat: 0 }] };
       n = mkLog(n, 'company', `立项开发「${d.name}」，投入 ${d.devCost} 万，预计需要 ${Math.ceil(effWork(n, d) / devSpeed(n))} 个季度。`);
       return n;
     }
@@ -617,6 +668,38 @@ export function reducer(s: GameState, a: Action): GameState {
       let n: GameState = { ...s, ap: s.ap - 1, funds: +(s.funds - cost).toFixed(1), products: s.products.map((x) => (x.uid === a.uid ? { ...x, level: x.level + 1 } : x)) };
       n = mkLog(n, 'company', `产品「${d.name}」迭代至 Lv.${p.level + 1}（投入 ${cost} 万），季度收入 +30%。`);
       return toast(n, `${d.name} 升级至 Lv.${p.level + 1}`, 'good');
+    }
+
+    /* 调整产品定价策略（免费 / 标准 / 高价） */
+    case 'SET_PRICE': {
+      const p = s.products.find((x) => x.uid === a.uid);
+      if (!p || !p.launched || p.price === a.price) return s;
+      const d = productDef(p.def);
+      const pm = PRICE_MODES.find((m) => m.id === a.price)!;
+      let n: GameState = { ...s, products: s.products.map((x) => (x.uid === a.uid ? { ...x, price: a.price } : x)) };
+      n = mkLog(n, 'company', `产品「${d.name}」调价至「${pm.name}」：${pm.desc}`);
+      return n;
+    }
+
+    /* 产品运营：推广活动 / 内容运营 */
+    case 'OPS': {
+      if (s.phase !== 'play' || s.ap <= 0 || s.queue.length > 0) return s;
+      const p = s.products.find((x) => x.uid === a.uid);
+      if (!p || !p.launched) return s;
+      const op = opsDef(a.kind);
+      if (s.funds < op.cost) return s;
+      const d = productDef(p.def);
+      const newHeat = Math.min(100, (p.heat || 0) + op.heat);
+      let n: GameState = { ...s, ap: s.ap - 1, funds: +(s.funds - op.cost).toFixed(1), products: s.products.map((x) => (x.uid === a.uid ? { ...x, heat: newHeat } : x)) };
+      if (a.kind === 'ad') {
+        n.users = +(n.users + 1.5).toFixed(1);
+        n = mkLog(n, 'company', `为「${d.name}」投放推广（${op.cost} 万）：热度升至 ${newHeat}，新增用户 1.5 万。`);
+      } else {
+        n.fame = clamp(+(n.fame + 1.5).toFixed(1), 0, 100);
+        n = mkLog(n, 'company', `为「${d.name}」做内容运营（${op.cost} 万）：热度升至 ${newHeat}，声望 +1.5。`);
+      }
+      if (newHeat >= 80 && (p.heat || 0) < 80) n = toast(n, `「${d.name}」成为爆款！`, 'good');
+      return n;
     }
 
     /* 融资确认到账 */

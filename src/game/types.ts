@@ -76,6 +76,9 @@ export interface PersonDef {
   buffDesc: string;
 }
 
+/** 定价策略：免费拉新 / 标准 / 高价高 ARPU */
+export type PriceMode = 'free' | 'std' | 'high';
+
 export interface ProductInst {
   uid: number;
   def: string;
@@ -84,6 +87,10 @@ export interface ProductInst {
   launchedTurn?: number;
   /** 产品等级 1-3，升级提高收益 */
   level: number;
+  /** 定价策略 */
+  price: PriceMode;
+  /** 运营热度 0-100，每回合衰减，推广/内容运营可提升 */
+  heat: number;
 }
 
 export interface LogEntry {
@@ -172,6 +179,8 @@ export type Action =
   | { type: 'TAKE_LOAN' }
   | { type: 'UPGRADE_SERVERS' }
   | { type: 'UPGRADE_PRODUCT'; uid: number }
+  | { type: 'SET_PRICE'; uid: number; price: PriceMode }
+  | { type: 'OPS'; uid: number; kind: 'ad' | 'content' }
   | { type: 'ACCEPT_RAISE'; offer: { investor: string; share: number; amount: number } }
   | { type: 'TOAST_GONE'; id: number }
   | { type: 'BANNER_GONE' }

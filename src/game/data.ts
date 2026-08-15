@@ -1,4 +1,4 @@
-import type { GameEvent, GameState, PersonDef, PolicyDef, ProductDef, TechDef } from './types';
+import type { GameEvent, GameState, PersonDef, PolicyDef, PriceMode, ProductDef, TechDef } from './types';
 
 export const TOTAL_TURNS = 48; // 1999Q1 → 2010Q4
 
@@ -88,6 +88,19 @@ export const SERVER_TIERS = [
   { name: 'IDC 托管机柜', cap: 200, cost: 50 },
   { name: '自有数据中心', cap: 600, cost: 130 },
   { name: '国家级数据中心', cap: 1500, cost: 300 },
+];
+
+/* ================= 产品定价策略 ================= */
+export const PRICE_MODES: { id: PriceMode; name: string; incomeMult: number; pullMult: number; desc: string }[] = [
+  { id: 'free', name: '免费', incomeMult: 0.55, pullMult: 1.6, desc: '收入 ×0.55，拉新 ×1.6。用免费换装机量。' },
+  { id: 'std', name: '标准', incomeMult: 1, pullMult: 1, desc: '常规收费，收入与拉新均衡。' },
+  { id: 'high', name: '高价', incomeMult: 1.45, pullMult: 0.5, desc: '收入 ×1.45，拉新 ×0.5。做高 ARPU 的精品。' },
+];
+
+/* ================= 产品运营动作 ================= */
+export const OPS_ACTIONS: { kind: 'ad' | 'content'; name: string; cost: number; heat: number; desc: string }[] = [
+  { kind: 'ad', name: '推广活动', cost: 6, heat: 35, desc: '热度 +35 · 用户 +1.5万。买量冲榜。' },
+  { kind: 'content', name: '内容运营', cost: 2, heat: 18, desc: '热度 +18 · 声望 +1.5。用心做内容攒口碑。' },
 ];
 
 /* ================= 对手估值行情（转折点 [回合, 估值]，线性插值） ================= */
