@@ -430,8 +430,8 @@ export function ActionsPanel({ s, d }: { s: GameState; d: DP }) {
             <ABtn title={s.cur ? '加速当前研发 +3 点进度' : '先在「研发实验室」点击一项技术设为主攻方向'} disabled={busy || noAp || !s.cur} onClick={() => d({ type: 'ACT', kind: 'research' })}>
               {Icons.flask(15)} 研发推进 <i className="not-italic text-[10px] text-[#5a5750]">1 行动点</i>
             </ABtn>
-            <ABtn title="投入 12 万做市场推广" disabled={busy || noAp || s.funds < 12} onClick={() => d({ type: 'ACT', kind: 'marketing' })}>
-              {Icons.star(15)} 市场推广 <i className="not-italic text-[10px] text-[#5a5750]">1 点 + ¥12万</i>
+            <ABtn title="投入 8 万做市场推广" disabled={busy || noAp || s.funds < 8} onClick={() => d({ type: 'ACT', kind: 'marketing' })}>
+              {Icons.star(15)} 市场推广 <i className="not-italic text-[10px] text-[#5a5750]">1 点 + ¥8万</i>
             </ABtn>
             <ABtn title="招聘一名员工（提升研发与开发速度，增加行动点上限）" disabled={busy || noAp || s.funds < 8 || s.team >= 30} onClick={() => d({ type: 'ACT', kind: 'hire' })}>
               {Icons.users(15)} 招兵买马 <i className="not-italic text-[10px] text-[#5a5750]">1 点 + ¥8万</i>

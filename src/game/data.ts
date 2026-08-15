@@ -13,7 +13,7 @@ export const ERAS = [
   { id: 0, name: '门户时代', sub: '1999–2001 · 三大门户叱咤风云', range: [0, 9] as const, mult: 1 },
   { id: 1, name: 'SP与网游时代', sub: '2001–2004 · 短信淘金，传奇燎原', range: [10, 21] as const, mult: 1.5 },
   { id: 2, name: 'Web 2.0 时代', sub: '2004–2007 · 百度上市，全民博客', range: [22, 33] as const, mult: 2.2 },
-  { id: 3, name: '移动互联网时代', sub: '2007–2010 · iPhone 来了，3G 来了', range: [34, 47] as const, mult: 3.5 },
+  { id: 3, name: '移动互联网时代', sub: '2007–2010 · iPhone 来了，3G 来了', range: [34, 47] as const, mult: 4.0 },
 ];
 
 export function eraOf(t: number) {
@@ -154,21 +154,25 @@ export const TECHS: TechDef[] = [
   { id: 't_mpay', name: '移动支付', era: 3, cost: 8, req: ['t_pay', 't_client'], desc: '钱包消失的前夜。', unlocks: 'p_mpay' },
 ];
 
+/* 数值平衡（v2 重算）：
+   每个产品上线即净正（base×时代倍率 − 运维 > 0），2~4 季收回 devCost；
+   ucoef 按「每万用户每季贡献万元」标定（SP/网游/支付是高 ARPU 印钞机）；
+   devCost 普遍下调 35%~45%，确保前期投得起、中后期敢扩张。 */
 export const PRODUCTS: ProductDef[] = [
-  { id: 'p_bbs', name: 'BBS 论坛', tech: 't_bbs', devCost: 12, work: 3, upkeep: 0.3, base: 0.5, ucoef: 0.0004, pull: 0.2, fame: 0.1, desc: '灌水、盖楼、抢沙发，第一代网民的精神家园。' },
-  { id: 'p_mail', name: '免费邮箱', tech: 't_mail', devCost: 18, work: 3, upkeep: 0.6, base: 0.35, ucoef: 0.0001, pull: 0.5, fame: 0.35, desc: '送邮箱就是送户口，用户从此有了网上身份。' },
-  { id: 'p_portal', name: '门户网站', tech: 't_portal', devCost: 45, work: 5, upkeep: 1.2, base: 1.8, ucoef: 0.0015, pull: 0.3, fame: 0.2, desc: '首页广告位一版难求，这就是那个时代的流量。' },
-  { id: 'p_wap', name: 'WAP 手机站', tech: 't_wap', devCost: 30, work: 4, upkeep: 0.7, base: 0.6, ucoef: 0.0006, pull: 0.1, fame: 0, desc: '彩屏手机上的蓝色链接，移动互联网的胚胎。' },
-  { id: 'p_sp', name: '移动增值 SP', tech: 't_sp', devCost: 35, work: 4, upkeep: 0.9, base: 2.4, ucoef: 0.0018, pull: 0.05, fame: -0.05, desc: '短信订阅、彩铃下载，和运营商七三分成的暴利生意。' },
-  { id: 'p_game', name: '网游运营', tech: 't_game', devCost: 70, work: 6, upkeep: 1.8, base: 4.0, ucoef: 0.003, pull: 0.2, fame: 0.1, desc: '一张点卡 35 元，网吧里全是你的「城主」。' },
-  { id: 'p_im', name: 'IM 即时通讯', tech: 't_im', devCost: 60, work: 6, upkeep: 1.6, base: 0.4, ucoef: 0.0008, pull: 0.9, fame: 0.1, desc: '用户增长引擎，但你要面对史上最可怕的对手。' },
-  { id: 'p_search', name: '搜索引擎', tech: 't_search', devCost: 80, work: 6, upkeep: 1.8, base: 2.2, ucoef: 0.002, pull: 0.35, fame: 0.15, desc: '竞价排名一开，搜索框就是印钞机。' },
-  { id: 'p_sns', name: 'SNS 社区', tech: 't_sns', devCost: 55, work: 5, upkeep: 1.1, base: 0.9, ucoef: 0.001, pull: 0.7, fame: 0.25, desc: '偷菜、抢车位、写博客，全民社交狂欢。' },
-  { id: 'p_video', name: '视频网站', tech: 't_video', devCost: 100, work: 7, upkeep: 2.8, base: 1.5, ucoef: 0.0016, pull: 0.5, fame: 0.4, desc: '一个馒头引发的血案，让所有人看见视频的力量。' },
-  { id: 'p_ec', name: '电商交易平台', tech: 't_ec', devCost: 90, work: 7, upkeep: 2.0, base: 2.0, ucoef: 0.0024, pull: 0.3, fame: 0.15, desc: '让买家卖家隔着网线互相「亲，包邮吗」。' },
-  { id: 'p_client', name: '手机客户端', tech: 't_client', devCost: 75, work: 6, upkeep: 1.2, base: 1.2, ucoef: 0.0018, pull: 0.8, fame: 0.2, desc: '抢下用户掌心的那一英寸屏幕。' },
-  { id: 'p_app', name: '开放平台', tech: 't_app', devCost: 130, work: 8, upkeep: 2.2, base: 2.8, ucoef: 0.0026, pull: 0.4, fame: 0.25, desc: '从做产品到做生态，格局打开。' },
-  { id: 'p_mpay', name: '移动支付', tech: 't_mpay', devCost: 110, work: 8, upkeep: 1.8, base: 2.4, ucoef: 0.0028, pull: 0.2, fame: 0.2, desc: '下一个十年的船票，你提前拿到了。' },
+  { id: 'p_bbs', name: 'BBS 论坛', tech: 't_bbs', devCost: 10, work: 2, upkeep: 0.3, base: 2.0, ucoef: 0.03, pull: 0.2, fame: 0.1, desc: '灌水、盖楼、抢沙发，第一代网民的精神家园。' },
+  { id: 'p_mail', name: '免费邮箱', tech: 't_mail', devCost: 12, work: 2, upkeep: 0.4, base: 1.8, ucoef: 0.02, pull: 0.5, fame: 0.35, desc: '送邮箱就是送户口，用户从此有了网上身份。' },
+  { id: 'p_portal', name: '门户网站', tech: 't_portal', devCost: 28, work: 4, upkeep: 1.2, base: 5.0, ucoef: 0.06, pull: 0.3, fame: 0.2, desc: '首页广告位一版难求，这就是那个时代的流量。' },
+  { id: 'p_wap', name: 'WAP 手机站', tech: 't_wap', devCost: 16, work: 3, upkeep: 0.5, base: 2.4, ucoef: 0.03, pull: 0.1, fame: 0, desc: '彩屏手机上的蓝色链接，移动互联网的胚胎。' },
+  { id: 'p_sp', name: '移动增值 SP', tech: 't_sp', devCost: 22, work: 3, upkeep: 0.9, base: 5.0, ucoef: 0.12, pull: 0.05, fame: -0.05, desc: '短信订阅、彩铃下载，和运营商七三分成的暴利生意。' },
+  { id: 'p_game', name: '网游运营', tech: 't_game', devCost: 40, work: 5, upkeep: 1.6, base: 7.0, ucoef: 0.15, pull: 0.2, fame: 0.1, desc: '一张点卡 35 元，网吧里全是你的「城主」。' },
+  { id: 'p_im', name: 'IM 即时通讯', tech: 't_im', devCost: 30, work: 5, upkeep: 1.4, base: 2.0, ucoef: 0.02, pull: 0.9, fame: 0.1, desc: '用户增长引擎，但你要面对史上最可怕的对手。' },
+  { id: 'p_search', name: '搜索引擎', tech: 't_search', devCost: 45, work: 5, upkeep: 1.6, base: 8.0, ucoef: 0.08, pull: 0.35, fame: 0.15, desc: '竞价排名一开，搜索框就是印钞机。' },
+  { id: 'p_sns', name: 'SNS 社区', tech: 't_sns', devCost: 30, work: 4, upkeep: 1.0, base: 4.0, ucoef: 0.05, pull: 0.7, fame: 0.25, desc: '偷菜、抢车位、写博客，全民社交狂欢。' },
+  { id: 'p_video', name: '视频网站', tech: 't_video', devCost: 50, work: 6, upkeep: 2.4, base: 6.0, ucoef: 0.04, pull: 0.5, fame: 0.4, desc: '一个馒头引发的血案，让所有人看见视频的力量。' },
+  { id: 'p_ec', name: '电商交易平台', tech: 't_ec', devCost: 45, work: 5, upkeep: 1.8, base: 7.0, ucoef: 0.07, pull: 0.3, fame: 0.15, desc: '让买家卖家隔着网线互相「亲，包邮吗」。' },
+  { id: 'p_client', name: '手机客户端', tech: 't_client', devCost: 40, work: 4, upkeep: 1.2, base: 6.0, ucoef: 0.06, pull: 0.8, fame: 0.2, desc: '抢下用户掌心的那一英寸屏幕。' },
+  { id: 'p_app', name: '开放平台', tech: 't_app', devCost: 70, work: 6, upkeep: 2.0, base: 9.0, ucoef: 0.08, pull: 0.4, fame: 0.25, desc: '从做产品到做生态，格局打开。' },
+  { id: 'p_mpay', name: '移动支付', tech: 't_mpay', devCost: 60, work: 5, upkeep: 1.6, base: 8.0, ucoef: 0.10, pull: 0.2, fame: 0.2, desc: '下一个十年的船票，你提前拿到了。' },
 ];
 
 export const POLICIES: PolicyDef[] = [
@@ -662,7 +666,7 @@ export const ACHIEVEMENTS: { id: string; name: string; desc: string; check: (s: 
   { id: 'ach_bat', name: 'BAT 见证人', desc: '结识马云、马化腾、李彦宏', check: (s) => ['mayun', 'pony', 'robin'].every((p) => s.met.includes(p)) },
   { id: 'ach_investor', name: '幕后金主', desc: '任意一笔投资成功套现', check: (s) => Object.keys(s.flags).some((f) => f.startsWith('payoff_')) },
   { id: 'ach_prophet', name: '先知先觉', desc: '2008 年前上线手机客户端', check: (s) => s.products.some((p) => p.def === 'p_client' && (p.launchedTurn ?? 99) <= 35) },
-  { id: 'ach_unicorn', name: '亿万富翁俱乐部', desc: '公司估值突破 1 亿', check: (s) => s.history.some((v) => v >= 100) },
+  { id: 'ach_unicorn', name: '独角兽俱乐部', desc: '公司估值突破 1000 万（A 级门槛）', check: (s) => s.history.some((v) => v >= 1000) },
   { id: 'ach_social', name: '社交达人', desc: '结识 8 位以上时代人物', check: (s) => s.met.length >= 8 },
   { id: 'ach_tycoon', name: '大厂长', desc: '团队规模达到 20 人', check: (s) => s.team >= 20 },
   { id: 'ach_sina', name: '王志东的门徒', desc: '并入新浪体系', check: (s) => !!s.flags.sina_merge },

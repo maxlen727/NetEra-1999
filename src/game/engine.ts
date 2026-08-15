@@ -96,14 +96,20 @@ export function rivalVal(curve: { pts: [number, number][] }, turn: number): numb
 }
 
 export function valuation(s: GameState): number {
-  let v = s.users * 2 + s.fame * 2.5 + s.techPts * 2;
-  v += s.researched.length * 6;
+  /* 估值 = 现金 + 用户资产 + 品牌 + 技术 + 产品组合 + 机房 + 时代红利 + 营收倍数(P/S) + 投资布局 */
+  let v = s.funds * 0.6; // 现金也计入
+  v += s.users * 1.2 + s.fame * 1.5 + s.techPts * 2;
+  v += s.researched.length * 12;
   for (const p of s.products) {
     const d = productDef(p.def);
-    v += p.launched ? d.devCost + d.base * 10 + ((p.level || 1) - 1) * 10 + (p.heat || 0) * 0.15 : d.devCost * 0.4;
+    v += p.launched
+      ? d.devCost * 0.5 + d.base * 2 + ((p.level || 1) - 1) * 8 + (p.heat || 0) * 0.1
+      : d.devCost * 0.3;
   }
-  v += s.servers * 20; // 机房资产
-  v += eraOf(s.turn).id * 30;
+  v += s.servers * 25; // 机房资产
+  v += eraOf(s.turn).id * 40; // 时代红利
+  /* 营收倍数：季度营收 × 5 ≈ 1.25 年 P/S，生意越好估值越高 */
+  v += quarterReport(s).revenue * 5;
   const pays = Object.keys(s.flags).filter((f) => f.startsWith('payoff_')).length;
   const invs = Object.keys(s.flags).filter((f) => f.startsWith('inv_')).length;
   v += pays * 40 + Math.max(0, invs - pays) * 15;
@@ -557,15 +563,15 @@ export function reducer(s: GameState, a: Action): GameState {
           return checkAch(n);
         }
         case 'marketing': {
-          if (n.funds < 12) return s;
+          if (n.funds < 8) return s;
           n.ap -= 1;
-          n.funds = +(n.funds - 12).toFixed(1);
+          n.funds = +(n.funds - 8).toFixed(1);
           const eraIdx = eraOf(n.turn).id;
-          let gain = 2 + eraIdx * 1.5;
+          let gain = 2.5 + eraIdx * 1.5;
           if (has(n, 'p_burn')) gain *= 1.6;
           n.users = +(n.users + gain).toFixed(1);
           n.fame = clamp(+(n.fame + 1.5).toFixed(1), 0, 100);
-          n = mkLog(n, 'company', `投入 12 万市场推广（报纸中缝+网吧桌面+公交拉手），新增用户约 ${gain.toFixed(1)} 万。`);
+          n = mkLog(n, 'company', `投入 8 万市场推广（报纸中缝+网吧桌面+公交拉手），新增用户约 ${gain.toFixed(1)} 万。`);
           return checkAch(n);
         }
         case 'hire': {
@@ -724,9 +730,11 @@ export function raiseOffer(s: GameState) {
   if (has(s, 'p_cap')) share -= 3;
   if (adv(s, 'xiong')) share -= 5;
   share = Math.max(5, share);
-  let mult = 0.28 + ((seed * 17) % 18) / 100;
-  if (s.flags.idg_early) mult += 0.08;
-  const amount = Math.max(8, Math.round(valuation(s) * (share / 100) * mult));
+  const eraIdx = eraOf(s.turn).id;
+  let mult = 0.5 + eraIdx * 0.12 + ((seed * 17) % 15) / 100; // 0.5 → 0.86+，越往后越值钱
+  if (s.flags.idg_early) mult += 0.1;
+  const floor = 12 + eraIdx * 10; // 保底 12/22/32/42 万，早期也能解渴
+  const amount = Math.max(floor, Math.round(valuation(s) * (share / 100) * mult));
   return { investor: inv(seed), share, amount };
 }
 
