@@ -1,1 +1,197 @@
 @import "tailwindcss";
+
+:root {
+  --chrome: #d4d0c4;
+  --chrome-dark: #b8b4a6;
+  --chrome-deep: #6f6b5f;
+  --navy-1: #00007b;
+  --navy-2: #1084d0;
+  --oicq: #1fa9e6;
+  --portal: #ff6a00;
+  --alert: #c8322b;
+  --money: #1f7a48;
+  --ink: #191b22;
+  --paper: #efece2;
+  --desk: #0c7f78;
+}
+
+* { box-sizing: border-box; }
+
+html, body { height: 100%; }
+
+body {
+  margin: 0;
+  font-family: "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
+  color: var(--ink);
+  background-color: var(--desk);
+  background-image:
+    repeating-linear-gradient(0deg, rgba(255,255,255,0.028) 0 1px, transparent 1px 3px),
+    repeating-linear-gradient(90deg, rgba(0,0,0,0.03) 0 1px, transparent 1px 3px),
+    radial-gradient(ellipse 120% 90% at 50% 0%, rgba(120,225,215,0.22), transparent 60%),
+    radial-gradient(ellipse 140% 120% at 50% 115%, rgba(0,25,28,0.55), transparent 62%);
+  overflow-x: hidden;
+}
+
+/* CRT scanline veil */
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 90;
+  background: repeating-linear-gradient(0deg, rgba(8,10,12,0.075) 0 1px, transparent 1px 3px);
+  mix-blend-mode: multiply;
+  animation: crt-flicker 4s infinite steps(8);
+}
+@keyframes crt-flicker {
+  0%, 100% { opacity: 0.85; }
+  50% { opacity: 1; }
+  7% { opacity: 0.72; }
+  9% { opacity: 0.95; }
+}
+
+.font-disp { font-family: "ZCOOL QingKe HuangYou", "Noto Sans SC", sans-serif; }
+.font-term { font-family: "VT323", monospace; }
+
+/* ============ Win98 chrome ============ */
+.bevel-out {
+  background: var(--chrome);
+  border: 1px solid;
+  border-color: #fffdf4 #55524a #55524a #fffdf4;
+  box-shadow: inset 1px 1px 0 #f1eee4, inset -1px -1px 0 #8a867a, 2px 2px 0 rgba(4,20,22,0.35);
+}
+.bevel-in {
+  border: 1px solid;
+  border-color: #55524a #fffdf4 #fffdf4 #55524a;
+  box-shadow: inset 1px 1px 0 #8a867a, inset -1px -1px 0 #f1eee4;
+  background: var(--paper);
+}
+.titlebar {
+  background: linear-gradient(90deg, var(--navy-1), var(--navy-2));
+  color: #fff;
+}
+.titlebar-inactive { background: linear-gradient(90deg, #5a5f6e, #8a93a5); }
+
+.btn98 {
+  font-family: "Noto Sans SC", sans-serif;
+  background: var(--chrome);
+  border: 1px solid;
+  border-color: #fffdf4 #4c4a42 #4c4a42 #fffdf4;
+  box-shadow: inset 1px 1px 0 #f1eee4, inset -1px -1px 0 #8a867a;
+  color: var(--ink);
+  cursor: pointer;
+  user-select: none;
+  transition: filter 0.08s;
+}
+.btn98:hover:not(:disabled) { filter: brightness(1.05); }
+.btn98:active:not(:disabled) {
+  border-color: #4c4a42 #fffdf4 #fffdf4 #4c4a42;
+  box-shadow: inset 1px 1px 0 #8a867a;
+  transform: translate(1px, 1px);
+}
+.btn98:disabled { opacity: 0.45; cursor: not-allowed; }
+
+.btn-primary {
+  background: linear-gradient(180deg, #ff8b2e, var(--portal));
+  border-color: #ffd9b0 #8a3a00 #8a3a00 #ffd9b0;
+  box-shadow: inset 1px 1px 0 rgba(255,255,255,0.55), inset -1px -1px 0 rgba(90,35,0,0.5);
+  color: #fff;
+  text-shadow: 0 1px 0 rgba(120,50,0,0.6);
+}
+.btn-primary:hover:not(:disabled) { filter: brightness(1.08); }
+
+.field98 {
+  background: #fff;
+  border: 1px solid;
+  border-color: #55524a #fffdf4 #fffdf4 #55524a;
+  box-shadow: inset 1px 1px 0 #b8b4a6;
+  padding: 6px 10px;
+  font: inherit;
+  outline: none;
+}
+.field98:focus { outline: 1px dotted var(--navy-1); outline-offset: -4px; }
+
+.progress98 {
+  background: #fff;
+  border: 1px solid;
+  border-color: #55524a #fffdf4 #fffdf4 #55524a;
+  height: 14px;
+  padding: 2px;
+}
+.progress98 > i {
+  display: block;
+  height: 100%;
+  background: repeating-linear-gradient(90deg, #1c63c9 0 8px, #4a8ae0 8px 16px);
+  transition: width 0.5s cubic-bezier(0.2, 0.8, 0.3, 1);
+}
+
+/* ============ motion ============ */
+@keyframes win-pop {
+  from { opacity: 0; transform: translateY(14px) scale(0.97); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+.win-pop { animation: win-pop 0.28s cubic-bezier(0.2, 0.9, 0.3, 1.2) both; }
+
+@keyframes dialog-pop {
+  0% { opacity: 0; transform: scale(0.86); }
+  70% { transform: scale(1.02); }
+  100% { opacity: 1; transform: scale(1); }
+}
+.dialog-pop { animation: dialog-pop 0.26s cubic-bezier(0.2, 0.9, 0.3, 1.15) both; }
+
+@keyframes era-sweep {
+  0% { transform: translateX(-110%); opacity: 0; }
+  12% { opacity: 1; }
+  88% { opacity: 1; }
+  100% { transform: translateX(110%); opacity: 0; }
+}
+.era-sweep { animation: era-sweep 3.4s cubic-bezier(0.4, 0, 0.4, 1) both; }
+
+@keyframes log-in {
+  from { opacity: 0; transform: translateX(-10px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+.log-in { animation: log-in 0.35s ease both; }
+
+@keyframes toast-in {
+  from { opacity: 0; transform: translateY(10px) scale(0.96); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+.toast-in { animation: toast-in 0.25s ease both; }
+
+@keyframes blink-cursor { 0%, 49% { opacity: 1; } 50%, 100% { opacity: 0; } }
+.blink-cursor { animation: blink-cursor 1s steps(1) infinite; }
+
+@keyframes pulse-glow {
+  0%, 100% { box-shadow: inset 1px 1px 0 rgba(255,255,255,0.55), inset -1px -1px 0 rgba(90,35,0,0.5), 0 0 0 0 rgba(255,140,50,0.65); }
+  50% { box-shadow: inset 1px 1px 0 rgba(255,255,255,0.55), inset -1px -1px 0 rgba(90,35,0,0.5), 0 0 18px 4px rgba(255,140,50,0.45); }
+}
+.pulse-glow { animation: pulse-glow 1.6s ease-in-out infinite; }
+
+@keyframes marquee-x {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+.marquee-track { animation: marquee-x 26s linear infinite; }
+
+@keyframes num-tick {
+  0% { transform: translateY(-40%); opacity: 0; }
+  100% { transform: translateY(0); opacity: 1; }
+}
+.num-tick { display: inline-block; animation: num-tick 0.3s ease both; }
+
+.scroll-98 { scrollbar-width: thin; scrollbar-color: var(--chrome) #efece2; }
+.scroll-98::-webkit-scrollbar { width: 14px; }
+.scroll-98::-webkit-scrollbar-track { background: #efece2; border-left: 1px solid #b8b4a6; }
+.scroll-98::-webkit-scrollbar-thumb {
+  background: var(--chrome);
+  border: 1px solid;
+  border-color: #fffdf4 #55524a #55524a #fffdf4;
+}
+
+.pixel-divider {
+  height: 4px;
+  background:
+    repeating-linear-gradient(90deg, var(--portal) 0 6px, var(--oicq) 6px 12px, var(--money) 12px 18px, var(--navy-1) 18px 24px);
+  image-rendering: pixelated;
+}
