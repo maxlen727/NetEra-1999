@@ -31,75 +31,59 @@ body {
   overflow-x: hidden;
 }
 
-/* Mobile gameplay is a fixed desktop-sized canvas scaled to the available viewport. */
-.game-stage {
-  width: 100%;
-  height: 100%;
-}
-.game-canvas {
-  width: 100%;
-  height: 100%;
-}
-.mobile-game-stage {
-  --game-scale: 1;
-}
+.game-stage { width: 100%; height: 100%; }
+.game-canvas { width: 100%; height: 100%; }
+.mobile-game-stage { --game-scale: 1; }
 
 @media (max-width: 1023px), (pointer: coarse) {
   html, body, #root { width: 100%; height: 100%; }
   body { overflow: hidden; }
 
-  .mobile-game-stage {
-    position: fixed;
-    inset: 0;
-    width: 100vw;
-    height: 100vh;
-    overflow: hidden;
-    background: #050607;
+  /* Fixed 1440×900 game surface. --game-scale is calculated from the real viewport. */
+  .theme-root {
+    position: absolute !important;
+    left: 50% !important;
+    top: 50% !important;
+    width: 1440px !important;
+    height: 900px !important;
+    max-width: none !important;
+    max-height: none !important;
+    overflow: hidden !important;
+    transform: translate(-50%, -50%) scale(var(--game-scale, 1)) !important;
+    transform-origin: center center !important;
   }
 
-  .mobile-game-stage .game-canvas {
-    position: absolute;
-    left: 50%;
-    top: 50%;
-    width: 1440px;
-    height: 900px;
-    max-width: none;
-    max-height: none;
-    transform: translate(-50%, -50%) scale(var(--game-scale));
-    transform-origin: center center;
+  /* Keep the desktop three-column composition instead of the phone's stacked layout. */
+  .theme-root > main,
+  .theme-root main {
+    grid-template-columns: repeat(12, minmax(0, 1fr)) !important;
+    overflow: hidden !important;
+  }
+  .theme-root main > div:nth-child(1) {
+    grid-column: span 3 / span 3 !important;
+    order: 1 !important;
+  }
+  .theme-root main > div:nth-child(2) {
+    grid-column: span 6 / span 6 !important;
+    order: 2 !important;
+  }
+  .theme-root main > div:nth-child(3) {
+    grid-column: span 3 / span 3 !important;
+    order: 3 !important;
   }
 
-  /* The original PC three-column layout remains intact inside the scaled canvas. */
-  .mobile-game-stage .game-canvas > div > main {
-    grid-template-columns: repeat(12, minmax(0, 1fr));
-    overflow: hidden;
-  }
-  .mobile-game-stage .game-canvas > div > main > div:nth-child(1) {
-    grid-column: span 3 / span 3;
-    order: 1;
-  }
-  .mobile-game-stage .game-canvas > div > main > div:nth-child(2) {
-    grid-column: span 6 / span 6;
-    order: 2;
-  }
-  .mobile-game-stage .game-canvas > div > main > div:nth-child(3) {
-    grid-column: span 3 / span 3;
-    order: 3;
-  }
+  .theme-root .lg\\:h-56 { height: 14rem !important; }
+  .theme-root .lg\\:h-64 { height: 16rem !important; }
+  .theme-root .lg\\:h-72 { height: 18rem !important; }
+  .theme-root .lg\\:overflow-hidden { overflow: hidden !important; }
+  .theme-root .lg\\:col-span-3 { grid-column: span 3 / span 3 !important; }
+  .theme-root .lg\\:col-span-6 { grid-column: span 6 / span 6 !important; }
+  .theme-root .lg\\:order-1 { order: 1 !important; }
+  .theme-root .lg\\:order-2 { order: 2 !important; }
+  .theme-root .lg\\:order-3 { order: 3 !important; }
 
-  /* Restore the desktop panel heights that Tailwind's lg: rules would normally provide. */
-  .mobile-game-stage .game-canvas .lg\\:h-56 { height: 14rem; }
-  .mobile-game-stage .game-canvas .lg\\:h-64 { height: 16rem; }
-  .mobile-game-stage .game-canvas .lg\\:h-72 { height: 18rem; }
-  .mobile-game-stage .game-canvas .lg\\:overflow-hidden { overflow: hidden; }
-  .mobile-game-stage .game-canvas .lg\\:col-span-3 { grid-column: span 3 / span 3; }
-  .mobile-game-stage .game-canvas .lg\\:col-span-6 { grid-column: span 6 / span 6; }
-  .mobile-game-stage .game-canvas .lg\\:order-1 { order: 1; }
-  .mobile-game-stage .game-canvas .lg\\:order-2 { order: 2; }
-  .mobile-game-stage .game-canvas .lg\\:order-3 { order: 3; }
-
-  /* Dialogs remain inside the same 1440×900 coordinate system. */
-  .mobile-game-stage .game-canvas .fixed { position: absolute; }
+  /* Fixed overlays belong to the game coordinate system while on mobile. */
+  .theme-root .fixed { position: absolute !important; }
 }
 
 /* CRT scanline veil */
@@ -113,38 +97,14 @@ body::after {
   mix-blend-mode: multiply;
   animation: crt-flicker 4s infinite steps(8);
 }
-@keyframes crt-flicker {
-  0%, 100% { opacity: 0.85; }
-  50% { opacity: 1; }
-  7% { opacity: 0.72; }
-  9% { opacity: 0.95; }
-}
-
+@keyframes crt-flicker { 0%, 100% { opacity: 0.85; } 50% { opacity: 1; } 7% { opacity: 0.72; } 9% { opacity: 0.95; } }
 .font-disp { font-family: "ZCOOL QingKe HuangYou", "Noto Sans SC", sans-serif; }
 .font-term { font-family: "VT323", monospace; }
-
-.bevel-out {
-  background: var(--chrome);
-  border: 1px solid;
-  border-color: #fffdf4 #55524a #55524a #fffdf4;
-  box-shadow: inset 1px 1px 0 #f1eee4, inset -1px -1px 0 #8a867a, 2px 2px 0 rgba(4,20,22,0.35);
-}
-.bevel-in {
-  border: 1px solid;
-  border-color: #55524a #fffdf4 #fffdf4 #55524a;
-  box-shadow: inset 1px 1px 0 #8a867a, inset -1px -1px 0 #f1eee4;
-  background: var(--paper);
-}
+.bevel-out { background: var(--chrome); border: 1px solid; border-color: #fffdf4 #55524a #55524a #fffdf4; box-shadow: inset 1px 1px 0 #f1eee4, inset -1px -1px 0 #8a867a, 2px 2px 0 rgba(4,20,22,0.35); }
+.bevel-in { border: 1px solid; border-color: #55524a #fffdf4 #fffdf4 #55524a; box-shadow: inset 1px 1px 0 #8a867a, inset -1px -1px 0 #f1eee4; background: var(--paper); }
 .titlebar { background: linear-gradient(90deg, var(--navy-1), var(--navy-2)); color: #fff; }
 .titlebar-inactive { background: linear-gradient(90deg, #5a5f6e, #8a93a5); }
-.btn98 {
-  font-family: "Noto Sans SC", sans-serif;
-  background: var(--chrome);
-  border: 1px solid;
-  border-color: #fffdf4 #4c4a42 #4c4a42 #fffdf4;
-  box-shadow: inset 1px 1px 0 #f1eee4, inset -1px -1px 0 #8a867a;
-  color: var(--ink); cursor: pointer; user-select: none; transition: filter 0.08s;
-}
+.btn98 { font-family: "Noto Sans SC", sans-serif; background: var(--chrome); border: 1px solid; border-color: #fffdf4 #4c4a42 #4c4a42 #fffdf4; box-shadow: inset 1px 1px 0 #f1eee4, inset -1px -1px 0 #8a867a; color: var(--ink); cursor: pointer; user-select: none; transition: filter 0.08s; }
 .btn98:hover:not(:disabled) { filter: brightness(1.05); }
 .btn98:active:not(:disabled) { border-color: #4c4a42 #fffdf4 #fffdf4 #4c4a42; box-shadow: inset 1px 1px 0 #8a867a; transform: translate(1px, 1px); }
 .btn98:disabled { opacity: 0.45; cursor: not-allowed; }
@@ -154,7 +114,6 @@ body::after {
 .field98:focus { outline: 1px dotted var(--navy-1); outline-offset: -4px; }
 .progress98 { background: #fff; border: 1px solid; border-color: #55524a #fffdf4 #fffdf4 #55524a; height: 14px; padding: 2px; }
 .progress98 > i { display: block; height: 100%; background: repeating-linear-gradient(90deg, #1c63c9 0 8px, #4a8ae0 8px 16px); transition: width 0.5s cubic-bezier(0.2, 0.8, 0.3, 1); }
-
 @keyframes win-pop { from { opacity: 0; transform: translateY(14px) scale(0.97); } to { opacity: 1; transform: translateY(0) scale(1); } }
 .win-pop { animation: win-pop 0.28s cubic-bezier(0.2, 0.9, 0.3, 1.2) both; }
 @keyframes dialog-pop { 0% { opacity: 0; transform: scale(0.86); } 70% { transform: scale(1.02); } 100% { opacity: 1; transform: scale(1); } }
